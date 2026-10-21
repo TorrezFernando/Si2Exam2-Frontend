@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterModule, RouterLink, RouterLinkActive } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../../core/services/auth.service';
+import { SaasService } from '../../../core/services/saas.service';
 import { ToastContainerComponent } from '../../../shared/components/toast-container/toast-container.component';
 
 interface NavItem {
@@ -38,10 +39,14 @@ interface NavItem {
         <!-- User Card -->
         @if (!sidebarCollapsed()) {
           <div class="sidebar-user">
-            <div class="avatar avatar-md">{{ initials() }}</div>
+            <div class="avatar avatar-md" [style.background]="auth.isSuperAdmin() ? 'linear-gradient(135deg, #f59e0b, #ec4899)' : ''">
+              {{ auth.isSuperAdmin() ? '👑' : initials() }}
+            </div>
             <div class="user-info">
               <div class="user-name">{{ auth.currentUser()?.full_name || 'Usuario' }}</div>
-              <div class="badge badge-primary">{{ auth.userRoleName() }}</div>
+              <div class="badge" [ngClass]="auth.isSuperAdmin() ? 'badge-warning' : 'badge-primary'">
+                {{ auth.isSuperAdmin() ? '👑 Superadmin' : auth.userRoleName() }}
+              </div>
             </div>
           </div>
         }
@@ -236,6 +241,7 @@ export class AdminLayoutComponent {
   sidebarCollapsed = signal(false);
 
   navItems: NavItem[] = [
+    {label: "Gestión comercial", icon: "📦", route: "/admin/operations", permissions: ["catalog:write", "inventory:write", "inventory:read"]},
     {
       label: 'Dashboard',
       route: '/admin/dashboard',
@@ -312,12 +318,38 @@ export class AdminLayoutComponent {
         <line x1="16" y1="17" x2="8" y2="17"/>
         <polyline points="10 9 9 9 8 9"/>
       </svg>`
+    },
+    {
+      label: 'Planes & Suscripción',
+      route: '/admin/plans',
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      </svg>`
+    },
+    {
+      label: 'Empresas SaaS',
+      route: '/admin/tenants',
+      permissions: ['saas:manage'],
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+        <path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16M9 9h1M9 13h1M9 17h1M14 9h1M14 13h1M14 17h1"/>
+      </svg>`
     }
   ];
 
-  constructor(public auth: AuthService) {}
+  constructor(public auth: AuthService, public saas: SaasService) {}
 
   canShowItem(item: NavItem): boolean {
+    if (this.auth.isSuperAdmin()) {
+      return true;
+    }
+    if (item.route === '/admin/tenants') {
+      return false; // Solo accesible para superadmin
+    }
+    if (item.route === '/admin/plans') {
+      // Visible para administradores de empresas
+      const role = this.auth.userRoleName()?.toLowerCase() || '';
+      return role === 'admin' || role === 'superadmin';
+    }
     if (item.route === '/admin/reports') {
       const role = this.auth.userRoleName()?.toLowerCase() || '';
       if (role.includes('cajero')) return false;

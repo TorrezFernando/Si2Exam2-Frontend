@@ -85,6 +85,14 @@
       </div>
       
       <div class="form-group">
+        <label>Categoría</label><select class="form-control" formControlName="category_id"><option [ngValue]="null">Sin categoría</option><option *ngFor="let x of categories" [ngValue]="x.id">{{ x.name }}</option></select>
+        <label>Proveedor</label><select class="form-control" formControlName="supplier_id"><option [ngValue]="null">Sin proveedor</option><option *ngFor="let x of suppliers" [ngValue]="x.id">{{ x.name }}</option></select>
+        <label>Temporada registrada</label><select class="form-control" formControlName="season_id"><option [ngValue]="null">Sin temporada</option><option *ngFor="let x of seasons" [ngValue]="x.id">{{ x.name }}</option></select>
+        <label>Colección</label><select class="form-control" formControlName="collection_id"><option [ngValue]="null">Sin colección</option><option *ngFor="let x of collections" [ngValue]="x.id">{{ x.name }}</option></select>
+        <label>Imagen de prenda para probador (PNG transparente recomendado)</label><input class="form-control" formControlName="garment_image_url" placeholder="https://...">
+        <label>Tipo de prenda</label><select class="form-control" formControlName="garment_type"><option value="upper_body">Superior</option><option value="lower_body">Inferior</option><option value="dresses">Vestido</option><option value="accessories">Accesorio</option></select>
+      </div>
+      <div class="form-group">
         <label>Sucursal Destino</label>
         <select class="form-control" formControlName="branch_id">
           <option [ngValue]="null" *ngIf="authService.isAdmin()">Todas las sucursales</option>

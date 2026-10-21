@@ -1,8 +1,8 @@
 # Etapa 1: Compilación de Angular
-FROM node:18-alpine as builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 COPY . .
 RUN npm run build -- --configuration production
 

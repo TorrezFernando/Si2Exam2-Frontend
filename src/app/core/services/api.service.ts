@@ -139,7 +139,7 @@ export class ApiService {
   }
 
   getCategories(): Observable<Category[]> {
-    return this.http.get<Category[]>(`${this.base}/categories`);
+    return this.http.get<Category[]>(`${this.base}/products/categories`);
   }
 
   // ─── RECOMMENDATIONS (Fase 3) ─────────────────────────────────────────────
@@ -182,6 +182,8 @@ export class ApiService {
   createReservation(data: {
     branch_id: number;
     items: { variant_id: number; quantity: number }[];
+    pickup_date?: string;
+    notes?: string;
   }): Observable<Reservation> {
     return this.http.post<Reservation>(`${this.base}/reservations`, data);
   }
@@ -195,7 +197,7 @@ export class ApiService {
   }
 
   cancelReservation(id: number): Observable<Reservation> {
-    return this.updateReservationStatus(id, 'cancelled');
+    return this.http.patch<Reservation>(`${this.base}/reservations/${id}/cancel`, {});
   }
 
   // ─── ORDERS (CU-10, CU-11) ────────────────────────────────────────────────
@@ -209,7 +211,11 @@ export class ApiService {
 
   createOrder(data: {
     branch_id?: number;
-    items: { variant_id: number; quantity: number; unit_price: number }[];
+    items: { variant_id: number; quantity: number; unit_price?: number }[];
+    order_type?: string;
+    payment_method?: string;
+    reservation_id?: number;
+    request_key?: string;
   }): Observable<Order> {
     return this.http.post<Order>(`${this.base}/orders`, data);
   }

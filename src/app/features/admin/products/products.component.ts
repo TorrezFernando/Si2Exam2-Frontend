@@ -15,6 +15,10 @@ import { Product, ProductVariant, Branch } from '../../../core/models';
 export class ProductsComponent implements OnInit {
   products: Product[] = [];
   branches: Branch[] = [];
+  suppliers: any[] = [];
+  seasons: any[] = [];
+  collections: any[] = [];
+  categories: any[] = [];
   
   showModal = false;
   isEditing = false;
@@ -34,6 +38,8 @@ export class ProductsComponent implements OnInit {
       description: [''],
       base_price: [0, [Validators.required, Validators.min(0)]],
       season: [''],
+      supplier_id: [null], season_id: [null], collection_id: [null], category_id: [null],
+      garment_image_url: [''], garment_type: ['upper_body'],
       branch_id: [null],
       image_url: [''],
       variants: this.fb.array([this.createVariantGroup()])
@@ -93,6 +99,10 @@ export class ProductsComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    this.api.get<any[]>("/operations/masters/suppliers").subscribe(r => this.suppliers=r);
+    this.api.get<any[]>("/operations/masters/seasons").subscribe(r => this.seasons=r);
+    this.api.get<any[]>("/operations/masters/collections").subscribe(r => this.collections=r);
+    this.api.getCategories().subscribe(r => this.categories=r);
     this.loadBranches();
     this.loadProducts();
   }
@@ -156,6 +166,8 @@ export class ProductsComponent implements OnInit {
       description: product.description,
       base_price: product.base_price,
       season: product.season,
+      supplier_id: product.supplier_id ?? null, season_id: product.season_id ?? null, collection_id: product.collection_id ?? null, category_id: product.category_id ?? null,
+      garment_image_url: product.garment_image_url ?? "", garment_type: product.garment_type ?? "upper_body",
       branch_id: defaultBranch,
       image_url: product.image_url ?? ''
     });
@@ -222,6 +234,8 @@ export class ProductsComponent implements OnInit {
       description: rawForm.description,
       base_price: Number(rawForm.base_price || 0),
       season: rawForm.season,
+      supplier_id: rawForm.supplier_id, season_id: rawForm.season_id, collection_id: rawForm.collection_id, category_id: rawForm.category_id,
+      garment_image_url: rawForm.garment_image_url, garment_type: rawForm.garment_type,
       branch_id: selectedBranchId,
       image_url: rawForm.image_url,
       variants

@@ -5,7 +5,7 @@ import { Router } from '@angular/router';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { ToastService } from '../../core/services/toast.service';
-import { Product, ProductVariant, Reservation } from '../../core/models';
+import { Product, ProductVariant, Reservation, Branch } from '../../core/models';
 
 interface PosCartItem {
   variant: ProductVariant;
@@ -29,6 +29,13 @@ interface PosCartItem {
         </div>
       </div>
 
+      <label>Sucursal de caja
+        <select class="form-input" [(ngModel)]="branchId" [disabled]="cart.length > 0">
+          <option [ngValue]="null">Selecciona una sucursal</option>
+          <option *ngFor="let branch of branches" [ngValue]="branch.id">{{ branch.name }}</option>
+        </select>
+      </label>
+      <p *ngIf="selectedReservation">Atendiendo reserva #{{ selectedReservation.id }}. Quita las prendas que el cliente no comprará.</p>
       <div class="grid" style="grid-template-columns: 2fr 1fr; gap: 24px;">
         <div style="display: flex; flex-direction: column; gap: 24px;">
           <div class="card card-glass p-lg">
@@ -111,7 +118,7 @@ interface PosCartItem {
               <div *ngIf="editingReservationId !== reservation.id" class="flex flex-wrap gap-xs mt-sm">
                 <button class="btn btn-ghost btn-sm" (click)="startReservationEdit(reservation)">Editar</button>
                 <button class="btn btn-primary btn-sm" (click)="changeReservationStatus(reservation.id, 'confirmed')" *ngIf="reservation.status !== 'confirmed' && reservation.status !== 'completed'">Confirmar</button>
-                <button class="btn btn-accent btn-sm" (click)="changeReservationStatus(reservation.id, 'completed')" *ngIf="reservation.status !== 'completed'">Completar</button>
+                <button class="btn btn-accent btn-sm" (click)="loadReservationForSale(reservation)" *ngIf="reservation.status !== 'completed'">Cobrar prendas</button>
                 <button class="btn btn-danger btn-sm" (click)="changeReservationStatus(reservation.id, 'cancelled')" *ngIf="reservation.status !== 'cancelled'">Cancelar</button>
               </div>
             </div>
@@ -221,6 +228,10 @@ export class CashierComponent implements OnInit {
   paymentBreakdown: { label: string; value: string }[] = [];
 
   cart: PosCartItem[] = [];
+  branches: Branch[] = [];
+  branchId: number | null = null;
+  selectedReservation: Reservation | null = null;
+  requestKey = crypto.randomUUID();
   paymentMethod = 'efectivo';
   loading = false;
   editingReservationId: number | null = null;
@@ -234,6 +245,8 @@ export class CashierComponent implements OnInit {
   ) {}
 
   ngOnInit() {
+    this.branchId = this.auth.currentUser()?.branch_id ?? null;
+    this.api.getBranches().subscribe(b => this.branches = b.filter(x => this.auth.hasPermission("branches:write") || x.id === this.branchId));
     this.loadProducts();
     this.loadReservations();
     this.loadOrders();
@@ -303,7 +316,7 @@ export class CashierComponent implements OnInit {
 
     const todayOrders = this.orders.filter((order) => {
       const created = new Date(order.created_at);
-      return created >= startOfDay;
+      return order.is_paid && created >= startOfDay;
     });
 
     const total = todayOrders.reduce((acc, order) => acc + Number(order.total_amount || 0), 0);
@@ -332,14 +345,22 @@ export class CashierComponent implements OnInit {
   }
 
   getVariantStock(v: ProductVariant): number {
-    if (!v) return 0;
-    if (v.quantity != null) {
-      return v.quantity;
+    if (this.selectedReservation) return this.selectedReservation.items?.find(i => i.variant_id === v.id)?.quantity ?? 0;
+    return v.inventories?.find(i => i.branch_id === this.branchId)?.stock ?? 0;
+  }
+
+  loadReservationForSale(reservation: Reservation) {
+    if (this.cart.length) { this.toast.warning('Vacía el carrito antes de atender una reserva.'); return; }
+    const loaded: PosCartItem[] = [];
+    for (const item of reservation.items ?? []) {
+      const product = this.products.find(p => p.variants?.some(v => v.id === item.variant_id));
+      const variant = product?.variants?.find(v => v.id === item.variant_id);
+      if (!product || !variant) { this.toast.error('No se pudo cargar una prenda. Revisa el catálogo.'); return; }
+      loaded.push({ variant, productName: product.name, quantity: item.quantity, unitPrice: variant.price_override ?? product.base_price });
     }
-    if (v.inventories && v.inventories.length > 0) {
-      return v.inventories.reduce((sum, inv) => sum + (inv.stock || 0), 0);
-    }
-    return 0;
+    this.branchId = reservation.branch_id;
+    this.selectedReservation = reservation;
+    this.cart = loaded;
   }
 
   getCartQuantityForVariant(variantId?: number): number {
@@ -419,7 +440,8 @@ export class CashierComponent implements OnInit {
   }
 
   submitOrder() {
-    if (this.cart.length === 0) return;
+    if (this.cart.length === 0 || this.loading) return;
+    if (!this.branchId) { this.toast.error('Selecciona la sucursal de caja'); return; }
     this.loading = true;
 
     const validItems = this.cart
@@ -437,7 +459,10 @@ export class CashierComponent implements OnInit {
     }
 
     const orderData = {
-      branch_id: 1,
+      branch_id: this.branchId,
+      order_type: this.selectedReservation ? "reserva_pickup" : "presencial",
+      reservation_id: this.selectedReservation?.id,
+      request_key: this.requestKey,
       payment_method: this.paymentMethod,
       card_type: this.paymentMethod === 'tarjeta' ? 'VISA' : undefined,
       card_last_four: this.paymentMethod === 'tarjeta' ? '0000' : undefined,
@@ -447,24 +472,10 @@ export class CashierComponent implements OnInit {
 
     this.api.createOrder(orderData).subscribe({
       next: (res) => {
-        // Descontar stock localmente para actualización inmediata de la interfaz
-        validItems.forEach(validItem => {
-          this.products.forEach(p => {
-            p.variants?.forEach(v => {
-              if (v.id === validItem.variant_id) {
-                if (v.quantity != null) {
-                  v.quantity = Math.max(0, v.quantity - validItem.quantity);
-                }
-                if (v.inventories) {
-                  v.inventories.forEach(inv => {
-                    inv.stock = Math.max(0, inv.stock - validItem.quantity);
-                  });
-                }
-              }
-            });
-          });
-        });
-
+        this.loadProducts();
+        this.loadReservations();
+        this.selectedReservation = null;
+        this.requestKey = crypto.randomUUID();
         this.toast.success(`Venta #${res.id} registrada con éxito`);
         this.cart = [];
         this.loading = false;

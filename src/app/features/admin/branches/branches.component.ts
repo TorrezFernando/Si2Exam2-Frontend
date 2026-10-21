@@ -21,6 +21,14 @@ import { Branch } from '../../../core/models';
         <button class="btn btn-primary" (click)="createNewBranch()">+ Nueva Sucursal</button>
       </div>
 
+      <form *ngIf="editing" class="card mb-lg" (ngSubmit)="saveBranch()">
+        <label>Nombre<input class="form-control" name="name" [(ngModel)]="draft.name" required></label>
+        <label>Ciudad<input class="form-control" name="city" [(ngModel)]="draft.city" required></label>
+        <label>Dirección<input class="form-control" name="address" [(ngModel)]="draft.address" required></label>
+        <label>Teléfono<input class="form-control" name="phone" [(ngModel)]="draft.phone"></label>
+        <button class="btn btn-primary" [disabled]="saving || !draft.name || !draft.city || !draft.address">Guardar</button>
+        <button type="button" class="btn btn-outline" (click)="editing = false">Cancelar</button>
+      </form>
       <!-- Estado de carga -->
       <div *ngIf="loading" class="flex justify-center p-xl">
         <div class="spinner"></div>
@@ -36,11 +44,11 @@ import { Branch } from '../../../core/models';
               {{ branch.is_active ? 'Activa' : 'Inactiva' }}
             </span>
           </div>
-          <p class="text-secondary text-sm"><strong>Dirección:</strong> {{ branch.address }}</p>
+          <p class="text-secondary text-sm"><strong>{{ branch.city }} · Dirección:</strong> {{ branch.address }}</p>
           <p class="text-secondary text-sm"><strong>Teléfono:</strong> {{ branch.phone || 'N/A' }}</p>
           
           <div class="flex justify-end mt-md gap-sm">
-            <button class="btn btn-outline btn-sm">Editar</button>
+            <button class="btn btn-outline btn-sm" (click)="editBranch(branch)">Editar</button>
             <button class="btn btn-danger btn-sm" *ngIf="branch.is_active" (click)="deactivateBranch(branch.id)">Desactivar</button>
           </div>
         </div>
@@ -56,6 +64,10 @@ import { Branch } from '../../../core/models';
 export class BranchesComponent implements OnInit {
   branches: Branch[] = [];
   loading = true;
+  editing = false;
+  saving = false;
+  editingId: number | null = null;
+  draft = { name: "", city: "", address: "", phone: "" };
 
   constructor(
     private apiService: ApiService,
@@ -107,6 +119,20 @@ export class BranchesComponent implements OnInit {
    * Placeholder para la creación de una nueva sucursal
    */
   createNewBranch() {
-    this.toast.info('Funcionalidad de creación en desarrollo');
+    this.editingId = null;
+    this.draft = {name: "", city: "", address: "", phone: ""};
+    this.editing = true;
   }
+  editBranch(branch: Branch) {
+    this.editingId = branch.id;
+    this.draft = {name:branch.name, city:branch.city ?? '', address:branch.address, phone:branch.phone ?? ''};
+    this.editing = true;
+  }
+  saveBranch() {
+    if (this.saving) return;
+    this.saving = true;
+    const request = this.editingId ? this.apiService.updateBranch(this.editingId, this.draft) : this.apiService.createBranch(this.draft);
+    request.subscribe({next: () => {this.saving=false; this.editing=false; this.loadBranches();}, error: () => {this.saving=false; this.toast.error('No se pudo guardar la sucursal');}});
+  }
+
 }

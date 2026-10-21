@@ -29,7 +29,10 @@ export function permissionGuard(...permissions: string[]): CanActivateFn {
       return false; 
     }
     
-    // Check if the user has any of the required permissions OR if it's admin (admin has all perms usually, but we check perms explicitly)
+    // Superadmin has universal access
+    if (auth.isSuperAdmin()) return true;
+    
+    // Check if the user has any of the required permissions
     const hasAccess = permissions.some(p => auth.hasPermission(p));
     
     if (hasAccess) return true;

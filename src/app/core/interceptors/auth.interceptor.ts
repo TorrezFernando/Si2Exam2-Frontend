@@ -12,8 +12,17 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const token = auth.getToken();
 
   // Clonar el request con el header Authorization si hay token
-  const authReq = token
-    ? req.clone({ setHeaders: { Authorization: `Bearer ${token}` } })
+  const headersConfig: Record<string, string> = {};
+  if (token) {
+    headersConfig['Authorization'] = `Bearer ${token}`;
+  }
+  const selectedTenant = localStorage.getItem('fs_selected_tenant_id');
+  if (selectedTenant && auth.isSuperAdmin()) {
+    headersConfig['X-Tenant-Id'] = selectedTenant;
+  }
+
+  const authReq = Object.keys(headersConfig).length > 0
+    ? req.clone({ setHeaders: headersConfig })
     : req;
 
   return next(authReq).pipe(

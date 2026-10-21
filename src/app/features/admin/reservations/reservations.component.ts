@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
@@ -50,19 +50,22 @@ import { Reservation } from '../../../core/models';
             Nota: {{ reservation.notes }}
           </div>
 
+          <ul><li *ngFor="let item of reservation.items">Variante #{{ item.variant_id }} · {{ item.variant?.size }} / {{ item.variant?.color }} · {{ item.quantity }} unidades</li></ul>
+          <p class="text-secondary">El cobro de prendas se completa desde caja.</p>
           <div class="mt-sm flex flex-wrap gap-sm">
             <button class="btn btn-primary btn-sm" (click)="changeStatus(reservation.id, 'confirmed')" *ngIf="reservation.status !== 'confirmed' && reservation.status !== 'completed' && reservation.status !== 'cancelled'">Confirmar</button>
-            <button class="btn btn-accent btn-sm" (click)="changeStatus(reservation.id, 'completed')" *ngIf="reservation.status !== 'completed' && reservation.status !== 'cancelled'">Completar</button>
-            <button class="btn btn-danger btn-sm" (click)="cancelReservation(reservation.id)" *ngIf="reservation.status !== 'cancelled'">Cancelar</button>
+            <button class="btn btn-danger btn-sm" (click)="cancelReservation(reservation.id)" *ngIf="reservation.status !== 'cancelled' && reservation.status !== 'completed'">Cancelar</button>
           </div>
         </div>
       </div>
     </div>
   `
 })
-export class ReservationsComponent implements OnInit {
+export class ReservationsComponent implements OnInit, OnDestroy {
   reservations: Reservation[] = [];
   loading = false;
+  private timer?: ReturnType<typeof setInterval>;
+  private initialized = false;
 
   constructor(
     private api: ApiService,
@@ -71,12 +74,18 @@ export class ReservationsComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadReservations();
+    this.timer = setInterval(() => this.loadReservations(), 30000);
   }
 
+  ngOnDestroy() { if (this.timer) clearInterval(this.timer); }
+
   loadReservations() {
+    if (this.loading) return;
     this.loading = true;
     this.api.getReservations().subscribe({
       next: (res) => {
+        if (this.initialized && res.some(r => r.status === "pending" && !this.reservations.some(old => old.id === r.id))) this.toast.info("Hay nuevas reservas para preparar");
+        this.initialized = true;
         this.reservations = res || [];
         this.loading = false;
       },

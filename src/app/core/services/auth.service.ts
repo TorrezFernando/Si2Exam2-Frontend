@@ -44,7 +44,8 @@ export class AuthService {
 
   // Role helpers
   readonly userRoleName = computed(() => this._currentUser()?.role?.name ?? null);
-  readonly isAdmin      = computed(() => this.userRoleName() === 'admin');
+  readonly isSuperAdmin = computed(() => this.userRoleName() === 'superadmin');
+  readonly isAdmin      = computed(() => this.userRoleName() === 'admin' || this.isSuperAdmin());
 
   constructor(private http: HttpClient, private router: Router) {}
 
@@ -100,7 +101,7 @@ export class AuthService {
 
   // ─── Redirect by Role ─────────────────────────────────────────────────────
   redirectByRole(roleName: string): void {
-    if (roleName === 'admin') {
+    if (roleName === 'admin' || roleName === 'superadmin') {
       this.router.navigate(['/admin/dashboard']);
     } else if (roleName === 'encargado') {
       this.router.navigate(['/admin/reservations']);

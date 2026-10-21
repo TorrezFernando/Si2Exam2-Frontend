@@ -15,6 +15,8 @@ export interface AuthResponse {
   access_token: string;
   token_type: string;
   role: string | null;
+  tenant_id?: number;
+  plan_code?: string;
 }
 
 export interface Permission {
@@ -45,9 +47,11 @@ export interface User {
   role?: Role;
   user_permissions: UserPermission[];
   branch_id?: number;
+  tenant_id?: number;
   is_active: boolean;
   created_at: string;
 }
+
 
 export interface CreateUserByAdmin {
   email: string;
@@ -85,6 +89,7 @@ export interface AuditLog {
 
 // ─── Branch Models ────────────────────────────────────────────────────────
 export interface Branch {
+  city?: string;
   id: number;
   name: string;
   address: string;
@@ -93,6 +98,7 @@ export interface Branch {
 }
 
 export interface CreateBranch {
+  city?: string;
   name: string;
   address: string;
   phone?: string;
@@ -107,6 +113,9 @@ export interface Category {
 }
 
 export interface Product {
+  supplier_id?: number;
+  season_id?: number;
+  collection_id?: number;
   id: number;
   name: string;
   description?: string;
@@ -211,3 +220,80 @@ export interface PaginationParams {
 export interface ApiError {
   detail: string | { msg: string; type: string }[];
 }
+
+// ─── SaaS Multitenant Models ─────────────────────────────────────────────
+export interface SubscriptionPlan {
+  id: number;
+  name: string;
+  code: string;
+  max_branches: number;
+  has_ai_reports: boolean;
+  has_offline_sync: boolean;
+  price: number;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface Tenant {
+  id: number;
+  name: string;
+  subdomain: string;
+  exchange_window_days: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface TenantDetail extends Tenant {
+  active_plan?: SubscriptionPlan | null;
+  subscription_status: string;
+  branches_count: number;
+  users_count: number;
+  orders_count: number;
+}
+
+export interface TenantCreateRequest {
+  name: string;
+  subdomain: string;
+  exchange_window_days?: number;
+  is_active?: boolean;
+  plan_code?: string;
+  admin_email?: string;
+  admin_password?: string;
+  admin_name?: string;
+}
+
+export interface TenantUpdateRequest {
+  name?: string;
+  subdomain?: string;
+  exchange_window_days?: number;
+  is_active?: boolean;
+}
+
+export interface SubscriptionUsage {
+  branches_count: number;
+  branches_limit: number;
+  users_count: number;
+  products_count: number;
+  orders_count: number;
+}
+
+export interface MySubscriptionResponse {
+  is_superadmin: boolean;
+  tenant?: Tenant | null;
+  plan?: SubscriptionPlan | null;
+  status: string;
+  start_date?: string | null;
+  usage?: SubscriptionUsage | null;
+}
+
+export interface SaaSStats {
+  total_tenants: number;
+  active_tenants: number;
+  total_branches: number;
+  total_users: number;
+  total_orders: number;
+  plans_distribution: { [key: string]: number };
+  monthly_recurring_revenue: number;
+}
+

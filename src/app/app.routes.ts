@@ -51,6 +51,8 @@ export const routes: Routes = [
       import('./features/cart/cart.routes').then(m => m.cartRoutes)
   },
 
+  { path: 'payment/:id', canActivate: [authGuard], loadComponent: () => import('./features/cart/payment.component').then(m => m.PaymentComponent) },
+
   // ─── Wildcard ─────────────────────────────────────────────────────────
   { path: '**', redirectTo: 'auth/login' }
 ];

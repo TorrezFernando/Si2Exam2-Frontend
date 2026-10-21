@@ -49,7 +49,7 @@ import { Branch } from '../../core/models';
             </div>
             
             <div class="flex items-center gap-lg">
-              <div class="font-semibold text-lg">\${{ item.unit_price.toFixed(2) }}</div>
+              <div class="font-semibold text-lg">Bs {{ item.unit_price.toFixed(2) }}</div>
               <div class="flex items-center gap-sm">
                 <button class="btn btn-sm btn-outline" style="padding: 2px 8px;" (click)="updateQuantity(i, -1)">-</button>
                 <span class="text-sm font-semibold" style="min-width: 20px; text-align: center;">{{ item.quantity }}</span>
@@ -66,7 +66,7 @@ import { Branch } from '../../core/models';
           
           <div class="flex justify-between mb-sm">
             <span class="text-secondary">Subtotal</span>
-            <span>\${{ cartTotal().toFixed(2) }}</span>
+            <span>Bs {{ cartTotal().toFixed(2) }}</span>
           </div>
           <div class="flex justify-between mb-sm">
             <span class="text-secondary">Envío</span>
@@ -75,7 +75,7 @@ import { Branch } from '../../core/models';
           
           <div class="border-t mt-md pt-md flex justify-between items-center mb-lg">
             <span class="font-bold text-lg">Total</span>
-            <span class="font-bold text-2xl text-primary">\${{ cartTotal().toFixed(2) }}</span>
+            <span class="font-bold text-2xl text-primary">Bs {{ cartTotal().toFixed(2) }}</span>
           </div>
 
           <button class="btn btn-primary w-full" style="padding: var(--space-md) 0;" (click)="showPaymentModal = true">
@@ -92,7 +92,7 @@ import { Branch } from '../../core/models';
         <button class="btn btn-sm btn-outline" style="position: absolute; top: var(--space-md); right: var(--space-md);" (click)="showPaymentModal = false">✕</button>
         
         <h2 class="font-bold text-3xl mb-xs text-center">Finalizar Compra</h2>
-        <p class="text-secondary text-center mb-xl">Total a pagar: <strong class="text-primary text-xl">\${{ cartTotal().toFixed(2) }}</strong></p>
+        <p class="text-secondary text-center mb-xl">Total a pagar: <strong class="text-primary text-xl">Bs {{ cartTotal().toFixed(2) }}</strong></p>
 
         <!-- Selección de Método de Pago -->
         <div class="mb-lg">
@@ -104,38 +104,9 @@ import { Branch } from '../../core/models';
           </div>
         </div>
 
-        <!-- Formulario Tarjeta -->
-        <div *ngIf="paymentMethod === 'tarjeta'" class="flex-col gap-lg mb-xl animate-fade-in">
-          <div>
-            <label class="form-label mb-xs block">Número de Tarjeta</label>
-            <input type="text" class="form-control p-sm" placeholder="**** **** **** 4242" [(ngModel)]="cardNumber">
-          </div>
-          <div class="grid grid-2 gap-md">
-            <div>
-              <label class="form-label mb-xs block">Vencimiento</label>
-              <input type="text" class="form-control p-sm" placeholder="MM/YY" [(ngModel)]="cardExpiry">
-              <small *ngIf="cardExpiry && cardExpiry.length >= 4 && !isExpiryValid()" class="text-danger mt-xs block">Tarjeta vencida o inválida.</small>
-            </div>
-            <div>
-              <label class="form-label mb-xs block">CVV</label>
-              <input type="password" autocomplete="new-password" class="form-control p-sm" placeholder="***" [(ngModel)]="cardCvv">
-            </div>
-          </div>
-        </div>
-
-        <!-- Formulario QR -->
-        <div *ngIf="paymentMethod === 'qr'" class="flex-col gap-md mb-xl animate-fade-in text-center">
-          <div class="p-lg bg-hover border" style="border-radius: var(--radius-md); display: inline-block; margin: 0 auto;">
-            <!-- Simulación de código QR -->
-            <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="7" height="7" rx="1"></rect>
-              <rect x="14" y="3" width="7" height="7" rx="1"></rect>
-              <rect x="14" y="14" width="7" height="7" rx="1"></rect>
-              <rect x="3" y="14" width="7" height="7" rx="1"></rect>
-              <path d="M6 6h1M17 6h1M17 17h1M6 17h1M10 10v4M14 10v4M10 10h4M10 14h4"></path>
-            </svg>
-          </div>
-          <p class="text-secondary text-sm">Escanea este código con tu aplicación bancaria.</p>
+        <div *ngIf="paymentMethod !== 'reserva'" class="card mb-lg">
+          <p>El pago se realiza de forma segura en Libélula. Podrás elegir entre los medios habilitados por el comercio.</p>
+          <p class="text-secondary">Importes en bolivianos (BOB). La orden se confirma cuando Libélula informa el pago.</p>
         </div>
         
         <!-- Formulario Reserva -->
@@ -169,7 +140,7 @@ import { Branch } from '../../core/models';
         </div>
 
         <button class="btn btn-accent w-full mt-lg" style="padding: var(--space-md) 0; margin-top: 1.5rem;" [disabled]="isProcessing || !canPay()" (click)="processPayment()">
-          {{ isProcessing ? 'Procesando pago...' : 'Pagar Ahora' }}
+          {{ isProcessing ? 'Procesando...' : paymentMethod === 'reserva' ? 'Reservar prendas' : 'Continuar a Libélula' }}
         </button>
       </div>
     </div>
@@ -183,9 +154,7 @@ export class CartComponent implements OnInit {
   showPaymentModal = false;
   paymentMethod: 'tarjeta' | 'qr' | 'reserva' = 'tarjeta';
   isProcessing = false;
-  cardNumber = '4242424242424242'; // Simulador default
-  cardExpiry = '12/25';
-  cardCvv = '123';
+  private requestKey = crypto.randomUUID();
   
   branches: Branch[] = [];
   reservaBranchId: number | null = null;
@@ -230,9 +199,6 @@ export class CartComponent implements OnInit {
   }
 
   canPay(): boolean {
-    if (this.paymentMethod === 'tarjeta') {
-      return !!(this.cardNumber && this.cardNumber.length >= 14 && this.isExpiryValid() && this.cardCvv && this.cardCvv.length >= 3);
-    }
     if (this.paymentMethod === 'reserva') {
       return !!(this.reservaBranchId && this.reservaDate && this.reservaTime && this.isTimeValid());
     }
@@ -248,64 +214,29 @@ export class CartComponent implements OnInit {
     return true;
   }
 
-  isExpiryValid(): boolean {
-    if (!this.cardExpiry) return false;
-    const parts = this.cardExpiry.split('/');
-    if (parts.length !== 2) return false;
-    const month = parseInt(parts[0], 10);
-    const year = parseInt(parts[1], 10);
-    
-    if (isNaN(month) || isNaN(year) || month < 1 || month > 12) return false;
-
-    const today = new Date();
-    const currentMonth = today.getMonth() + 1; // 1-12
-    const currentYear = today.getFullYear() % 100; // ej. 26 para 2026
-
-    if (year < currentYear) return false;
-    if (year === currentYear && month < currentMonth) return false;
-
-    return true;
-  }
-
   processPayment() {
+    if (this.isProcessing || !this.canPay()) return;
     this.isProcessing = true;
-    
-    // Preparar el payload para la API
-    const items = this.cartItems().map(item => ({
-      variant_id: item.variant?.id ?? 0,
-      quantity: item.quantity,
-      unit_price: item.unit_price
-    }));
-
-    // Simulamos un delay de red para efecto realista
-    setTimeout(() => {
-      if (this.paymentMethod === 'reserva') {
-        // Create Reservation API Call
-        const payload = {
-          branch_id: this.reservaBranchId!,
-          items: items.map(i => ({ variant_id: i.variant_id, quantity: i.quantity })),
-          notes: `Recojo: ${this.reservaDate} a las ${this.reservaTime}`
-        };
-        this.apiService.createReservation(payload).subscribe({
-          next: () => this.handleSuccess('¡Reserva completada! Te esperamos en la tienda.'),
-          error: (err) => this.handleError(err)
-        });
-      } else {
-        // Create Order API Call
-        const orderData = {
-          items: items,
-          order_type: 'online_delivery',
-          payment_method: this.paymentMethod,
-          card_type: this.paymentMethod === 'tarjeta' ? 'Simulada' : null,
-          card_last_four: this.paymentMethod === 'tarjeta' ? this.cardNumber.slice(-4) : null,
-          transaction_ref: 'TXN-WEB-' + Math.floor(Math.random() * 1000000)
-        };
-        this.apiService.createOrder(orderData).subscribe({
-          next: () => this.handleSuccess('¡Pago completado! Tu orden se generó con éxito.'),
-          error: (err) => this.handleError(err)
-        });
-      }
-    }, 1500);
+    const items = this.cartItems().map(item => ({ variant_id: item.variant?.id ?? 0, quantity: item.quantity }));
+    if (this.paymentMethod === 'reserva') {
+      this.apiService.createReservation({
+        branch_id: Number(this.reservaBranchId), items,
+        pickup_date: new Date(`${this.reservaDate}T${this.reservaTime}`).toISOString()
+      }).subscribe({
+        next: () => this.handleSuccess('Reserva registrada. La sucursal ya puede preparar tus prendas.'),
+        error: err => this.handleError(err)
+      });
+    } else {
+      this.apiService.createOrder({ items, order_type: 'online_delivery', payment_method: this.paymentMethod,
+        request_key: this.requestKey }).subscribe({
+        next: order => {
+          this.cartService.clearCart();
+          this.isProcessing = false;
+          this.router.navigate(['/payment', order.id]);
+        },
+        error: err => this.handleError(err)
+      });
+    }
   }
 
   private handleSuccess(msg: string) {
@@ -317,7 +248,7 @@ export class CartComponent implements OnInit {
   }
 
   private handleError(err: any) {
-    this.toast.error('Ocurrió un error al procesar el pago.');
+    this.toast.error(typeof err?.error?.detail === 'string' ? err.error.detail : 'No se pudo procesar la solicitud. Revisa los datos y el stock.');
     console.error(err);
     this.isProcessing = false;
   }

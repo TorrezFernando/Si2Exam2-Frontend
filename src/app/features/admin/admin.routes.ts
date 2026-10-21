@@ -6,6 +6,7 @@ export const adminRoutes: Routes = [
     path: '',
     component: AdminLayoutComponent,
     children: [
+      { path: "operations", loadComponent: () => import("./operations/operations.component").then(m => m.OperationsComponent) },
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
       {
         path: 'dashboard',
@@ -38,6 +39,14 @@ export const adminRoutes: Routes = [
       {
         path: 'reservations',
         loadComponent: () => import('./reservations/reservations.component').then(m => m.ReservationsComponent)
+      },
+      {
+        path: 'plans',
+        loadComponent: () => import('./plans/plans.component').then(m => m.SubscriptionPlansComponent)
+      },
+      {
+        path: 'tenants',
+        loadComponent: () => import('./tenants/tenants.component').then(m => m.TenantsManagementComponent)
       }
     ]
   }

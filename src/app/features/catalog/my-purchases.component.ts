@@ -15,7 +15,7 @@ import { Order } from '../../core/models';
       <div class="flex items-center justify-between mb-lg">
         <div>
           <h1 class="text-2xl font-bold">Mis Compras</h1>
-          <p class="text-secondary text-sm">Historial de pedidos y facturas</p>
+          <p class="text-secondary text-sm">Historial de pedidos y comprobantes</p>
         </div>
         <div class="flex gap-sm">
           <button class="btn btn-outline btn-sm" (click)="goCatalog()">Ir al catálogo</button>
@@ -74,7 +74,8 @@ import { Order } from '../../core/models';
           </div>
 
           <div class="mt-md md:mt-0 text-right flex flex-col justify-center">
-            <button class="btn btn-outline btn-sm text-primary" (click)="openInvoice(order)">📄 Ver Factura</button>
+            <button *ngIf="!order.is_paid" class="btn btn-primary" (click)="continuePayment(order.id)">Continuar o verificar pago</button>
+            <button class="btn btn-outline btn-sm text-primary" (click)="openInvoice(order)">📄 Ver comprobante</button>
           </div>
         </div>
       </div>
@@ -88,7 +89,7 @@ import { Order } from '../../core/models';
         <div class="text-center mb-lg border-b pb-md">
           <div style="font-size: 3rem;">💎</div>
           <h2 class="font-bold text-2xl" style="color: #000;">Fashion Store</h2>
-          <p class="text-sm" style="color: #666;">Factura de Venta / Recibo Oficial</p>
+          <p class="text-sm" style="color: #666;">Comprobante de compra</p>
         </div>
 
         <div class="mb-md text-sm" style="color: #444;">
@@ -138,6 +139,7 @@ import { Order } from '../../core/models';
   `
 })
 export class MyPurchasesComponent implements OnInit {
+  continuePayment(id: number) { this.router.navigate(["/payment", id]); }
   orders: Order[] = [];
   filteredOrders: Order[] = [];
   loading = true;
