@@ -47,6 +47,10 @@ export const adminRoutes: Routes = [
       {
         path: 'tenants',
         loadComponent: () => import('./tenants/tenants.component').then(m => m.TenantsManagementComponent)
+      },
+      {
+        path: 'sync-inbox',
+        loadComponent: () => import('./sync-inbox/sync-inbox.component').then(m => m.SyncInboxComponent)
       }
     ]
   }

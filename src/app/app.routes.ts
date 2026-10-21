@@ -53,6 +53,12 @@ export const routes: Routes = [
 
   { path: 'payment/:id', canActivate: [authGuard], loadComponent: () => import('./features/cart/payment.component').then(m => m.PaymentComponent) },
 
+  {
+    path: 'sync-inbox',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/admin/sync-inbox/sync-inbox.component').then(m => m.SyncInboxComponent)
+  },
+
   // ─── Wildcard ─────────────────────────────────────────────────────────
   { path: '**', redirectTo: 'auth/login' }
 ];

@@ -1,11 +1,14 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { ToastService } from '../../core/services/toast.service';
+import { NetworkService } from '../../core/services/network.service';
+import { OfflineSyncService } from '../../core/services/offline-sync.service';
 import { Product, ProductVariant, Reservation, Branch } from '../../core/models';
+import { offlineDb } from '../../core/db/app-database';
 
 interface PosCartItem {
   variant: ProductVariant;
@@ -17,12 +20,19 @@ interface PosCartItem {
 @Component({
   selector: 'app-cashier',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <div class="content-area" style="max-width: 1200px; margin: 0 auto; padding-top: var(--space-xl);">
       <div class="flex items-center justify-between mb-lg">
-        <h1 class="text-2xl font-bold">Panel de Caja (POS)</h1>
+        <div>
+          <h1 class="text-2xl font-bold">Panel de Caja (POS)</h1>
+          <span *ngIf="network.isOffline()" class="badge badge-warning" style="font-size: 0.75rem;">⚡ Modo Offline Activo (Persistencia en IndexedDB)</span>
+          <span *ngIf="network.isOnline()" class="badge badge-success" style="font-size: 0.75rem;">● En Línea</span>
+        </div>
         <div class="flex items-center gap-sm">
+          <a routerLink="/admin/sync-inbox" class="btn btn-outline btn-sm" style="border-color: #6366f1; color: #818cf8;">
+            ⚡ Bandeja Sync ({{ offlineSync.pendingCount() }})
+          </a>
           <button class="btn btn-outline btn-sm" type="button" (click)="goToCatalog()">Ver catálogo</button>
           <button class="btn btn-outline btn-sm" type="button" (click)="goToProfile()">Mi perfil</button>
           <button class="btn btn-danger btn-sm" type="button" (click)="logout()">Cerrar sesión</button>
@@ -241,13 +251,23 @@ export class CashierComponent implements OnInit {
     private api: ApiService,
     private toast: ToastService,
     private auth: AuthService,
-    private router: Router
+    private router: Router,
+    public network: NetworkService,
+    public offlineSync: OfflineSyncService
   ) {}
 
-  ngOnInit() {
+  async ngOnInit() {
     this.branchId = this.auth.currentUser()?.branch_id ?? null;
-    this.api.getBranches().subscribe(b => this.branches = b.filter(x => this.auth.hasPermission("branches:write") || x.id === this.branchId));
-    this.loadProducts();
+    if (this.network.isOnline()) {
+      this.api.getBranches().subscribe(b => this.branches = b.filter(x => this.auth.hasPermission("branches:write") || x.id === this.branchId));
+    } else {
+      const localB = await offlineDb.branches.toArray();
+      this.branches = localB as any[];
+      if (!this.branchId && this.branches.length > 0) {
+        this.branchId = this.branches[0].id;
+      }
+    }
+    await this.loadProducts();
     this.loadReservations();
     this.loadOrders();
   }
@@ -264,13 +284,39 @@ export class CashierComponent implements OnInit {
     this.auth.logout();
   }
 
-  loadProducts() {
+  async loadProducts() {
+    if (this.network.isOffline()) {
+      try {
+        const localProds = await this.offlineSync.getLocalProducts();
+        if (localProds.length > 0) {
+          this.products = localProds as unknown as Product[];
+          this.filteredProducts = this.products;
+          this.toast.info(`Catálogo offline cargado (${localProds.length} productos en caché local).`);
+          return;
+        }
+      } catch (err) {
+        console.warn('Error al leer productos locales:', err);
+      }
+    }
+
     this.api.getProducts().subscribe({
       next: (res) => {
         this.products = res;
         this.filteredProducts = res;
+        if (this.branchId) {
+          this.offlineSync.downloadCatalog(this.branchId).catch(() => {});
+        }
       },
-      error: () => this.toast.error('Error al cargar productos')
+      error: async () => {
+        const localProds = await this.offlineSync.getLocalProducts();
+        if (localProds.length > 0) {
+          this.products = localProds as unknown as Product[];
+          this.filteredProducts = this.products;
+          this.toast.warning('Servidor no disponible. Usando catálogo local de IndexedDB.');
+        } else {
+          this.toast.error('Error al cargar productos');
+        }
+      }
     });
   }
 
@@ -346,6 +392,9 @@ export class CashierComponent implements OnInit {
 
   getVariantStock(v: ProductVariant): number {
     if (this.selectedReservation) return this.selectedReservation.items?.find(i => i.variant_id === v.id)?.quantity ?? 0;
+    if ((v as any).stock !== undefined) {
+      return (v as any).stock;
+    }
     return v.inventories?.find(i => i.branch_id === this.branchId)?.stock ?? 0;
   }
 
@@ -439,6 +488,39 @@ export class CashierComponent implements OnInit {
     return this.cart.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
   }
 
+  async processOfflineOrder(validItems: { variant_id: number; quantity: number; unit_price: number }[]) {
+    try {
+      const saleData = {
+        branchId: this.branchId!,
+        userId: this.selectedReservation?.user_id,
+        customerName: this.selectedReservation ? this.getReservationTitle(this.selectedReservation) : 'Venta Presencial Offline',
+        paymentMethod: this.paymentMethod,
+        totalAmount: this.getTotal(),
+        items: validItems.map(i => {
+          const p = this.products.find(prod => prod.variants?.some(v => v.id === i.variant_id));
+          const v = p?.variants?.find(v => v.id === i.variant_id);
+          return {
+            variant_id: i.variant_id,
+            quantity: i.quantity,
+            unit_price: i.unit_price,
+            variant_name: p ? `${p.name} (${v?.color}/${v?.size})` : `Variante ${i.variant_id}`,
+            sku: v?.sku
+          };
+        })
+      };
+
+      const localOp = await this.offlineSync.recordOfflineSale(saleData);
+      this.toast.success(`⚡ Venta registrada en IndexedDB (UUID: ${localOp.client_operation_uuid.substring(0, 8)}...). Se sincronizará automáticamente.`);
+      this.cart = [];
+      this.selectedReservation = null;
+      this.loading = false;
+      await this.loadProducts();
+    } catch (e: any) {
+      this.toast.error('Error al guardar venta local: ' + (e?.message || e));
+      this.loading = false;
+    }
+  }
+
   submitOrder() {
     if (this.cart.length === 0 || this.loading) return;
     if (!this.branchId) { this.toast.error('Selecciona la sucursal de caja'); return; }
@@ -455,6 +537,11 @@ export class CashierComponent implements OnInit {
     if (validItems.length === 0) {
       this.toast.error('No hay variantes válidas para registrar la venta.');
       this.loading = false;
+      return;
+    }
+
+    if (this.network.isOffline()) {
+      this.processOfflineOrder(validItems);
       return;
     }
 
@@ -481,9 +568,14 @@ export class CashierComponent implements OnInit {
         this.loading = false;
         this.loadOrders();
       },
-      error: () => {
-        this.toast.error('Error al registrar la venta');
-        this.loading = false;
+      error: (err) => {
+        if (!navigator.onLine || err.status === 0 || err.status >= 502) {
+          this.toast.warning('Fallo de red detectado. Guardando venta localmente en IndexedDB...');
+          this.processOfflineOrder(validItems);
+        } else {
+          this.toast.error('Error al registrar la venta: ' + (err.error?.detail || err.message));
+          this.loading = false;
+        }
       }
     });
   }

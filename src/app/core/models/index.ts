@@ -297,3 +297,132 @@ export interface SaaSStats {
   monthly_recurring_revenue: number;
 }
 
+// ─── Offline & Synchronization Models (RNF03, RNF04, RNF05, RNF06) ──────────
+export type SyncOperationStatus = 'PENDIENTE' | 'ENVIANDO' | 'CONFIRMADA' | 'RECHAZADA_CONFLICTO';
+
+export interface LocalVariant {
+  id: number;
+  product_id?: number;
+  sku: string;
+  size: string;
+  color: string;
+  price: number;
+  stock: number;
+  image_url?: string;
+}
+
+export interface LocalProduct {
+  id: number;
+  tenant_id?: number;
+  name: string;
+  description?: string;
+  category_id?: number;
+  category_name?: string;
+  base_price: number;
+  image_url?: string;
+  variants: LocalVariant[];
+  updated_at?: string;
+}
+
+export interface LocalCustomer {
+  id: number;
+  tenant_id?: number;
+  full_name?: string;
+  email: string;
+  phone?: string;
+}
+
+export interface LocalBranch {
+  id: number;
+  tenant_id?: number;
+  name: string;
+  address: string;
+  city?: string;
+  is_active: boolean;
+}
+
+export interface LocalSaleItem {
+  variant_id: number;
+  quantity: number;
+  unit_price: number;
+  variant_name?: string;
+  sku?: string;
+}
+
+export interface LocalSaleOperation {
+  client_operation_uuid: string; // Primary key (UUID v4)
+  tenant_id?: number;
+  branch_id: number;
+  user_id?: number;
+  customer_name?: string;
+  payment_method: string;
+  total_amount: number;
+  items: LocalSaleItem[];
+  created_at: string;
+  sync_status: SyncOperationStatus;
+  server_id?: number;
+  rejection_reason?: string;
+}
+
+export interface LocalReservationItem {
+  variant_id: number;
+  quantity: number;
+  unit_price?: number;
+  variant_name?: string;
+  sku?: string;
+}
+
+export interface LocalReservationOperation {
+  client_operation_uuid: string; // Primary key (UUID v4)
+  tenant_id?: number;
+  branch_id: number;
+  user_id: number;
+  customer_name?: string;
+  pickup_date?: string;
+  notes?: string;
+  items: LocalReservationItem[];
+  created_at: string;
+  sync_status: SyncOperationStatus;
+  server_id?: number;
+  rejection_reason?: string;
+}
+
+export interface SyncQueueItem {
+  id?: number;
+  client_operation_uuid: string;
+  operation_type: 'sale' | 'reservation';
+  status: SyncOperationStatus;
+  payload: any;
+  created_at: string;
+  updated_at: string;
+  error_message?: string;
+  attempts: number;
+}
+
+export interface SyncCatalogResponse {
+  tenant_id: number;
+  branch_id: number;
+  branch_name: string;
+  server_timestamp: string;
+  exchange_window_days: number;
+  categories: { id: number; name: string; description?: string }[];
+  products: LocalProduct[];
+  customers: LocalCustomer[];
+}
+
+export interface SyncOperationReceipt {
+  operation_type: 'sale' | 'reservation';
+  client_operation_uuid: string;
+  status: 'CONFIRMADA' | 'RECHAZADA_CONFLICTO';
+  server_id?: number;
+  rejection_reason?: string;
+  processed_at: string;
+}
+
+export interface SyncBatchResponse {
+  total_processed: number;
+  confirmed_count: number;
+  conflict_count: number;
+  receipts: SyncOperationReceipt[];
+}
+
