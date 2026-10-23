@@ -1,7 +1,8 @@
+import { CartService } from './cart.service';
 import { Injectable, signal, computed } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { Observable, tap, catchError, throwError } from 'rxjs';
+import { Observable, tap, catchError, throwError, switchMap, map, finalize } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
   AuthResponse, LoginRequest, RegisterRequest, User
@@ -47,7 +48,7 @@ export class AuthService {
   readonly isSuperAdmin = computed(() => this.userRoleName() === 'superadmin');
   readonly isAdmin      = computed(() => this.userRoleName() === 'admin' || this.isSuperAdmin());
 
-  constructor(private http: HttpClient, private router: Router) {}
+  constructor(private http: HttpClient, private router: Router, private cart: CartService) {}
 
   // ─── CU-02: Login ─────────────────────────────────────────────────────────
   login(credentials: LoginRequest): Observable<AuthResponse> {
@@ -62,16 +63,20 @@ export class AuthService {
       formData.toString(),
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
     ).pipe(
-      tap(res => {
+      switchMap(res => {
+        this.cart.clearCart();
+        localStorage.removeItem('fs_selected_tenant_id');
+        this._currentUser.set(null);
+        localStorage.removeItem(this.USER_KEY);
         localStorage.setItem(this.TOKEN_KEY, res.access_token);
-        this._isLoading.set(false);
-        // Fetch full user profile after login
-        this.fetchMe().subscribe();
+        return this.fetchMe().pipe(map(() => res));
       }),
       catchError(err => {
-        this._isLoading.set(false);
+        localStorage.removeItem(this.TOKEN_KEY);
+        this._currentUser.set(null);
         return throwError(() => err);
-      })
+      }),
+      finalize(() => this._isLoading.set(false))
     );
   }
 
@@ -101,7 +106,9 @@ export class AuthService {
 
   // ─── Redirect by Role ─────────────────────────────────────────────────────
   redirectByRole(roleName: string): void {
-    if (roleName === 'admin' || roleName === 'superadmin') {
+    if (roleName === 'superadmin') {
+      this.router.navigate(['/admin/tenants']);
+    } else if (roleName === 'admin' || roleName === 'administrador') {
       this.router.navigate(['/admin/dashboard']);
     } else if (roleName === 'encargado') {
       this.router.navigate(['/admin/reservations']);
@@ -114,6 +121,8 @@ export class AuthService {
 
   // ─── Logout ───────────────────────────────────────────────────────────────
   logout(): void {
+    this.cart.clearCart();
+    localStorage.removeItem('fs_selected_tenant_id');
     localStorage.removeItem(this.TOKEN_KEY);
     localStorage.removeItem(this.USER_KEY);
     this._currentUser.set(null);

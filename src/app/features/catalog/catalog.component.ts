@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { environment } from '../../../environments/environment';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { ToastService } from '../../core/services/toast.service';
@@ -80,6 +80,10 @@ import { Product } from '../../core/models';
   `]
 })
 export class CatalogComponent implements OnInit {
+  storeName = '';
+  selectedStore = '';
+  stores: {name: string; slug: string}[] = [];
+  private requestVersion = 0;
   products: Product[] = [];
   filteredProducts: Product[] = [];
   recommendedProducts: Product[] = [];
@@ -92,14 +96,36 @@ export class CatalogComponent implements OnInit {
     private toast: ToastService,
     public authService: AuthService,
     public cartService: CartService,
+    private route: ActivatedRoute,
     public router: Router
   ) {}
 
   ngOnInit(): void {
-    this.loadProducts();
-    if (this.authService.isLoggedIn()) {
-      this.loadRecommendedProducts();
-    }
+    this.route.queryParamMap.subscribe(params => this.loadStore(params.get('store') ?? ''));
+  }
+
+  changeStore(slug: string): void {
+    this.cartService.clearCart();
+    this.router.navigate([], { relativeTo: this.route, queryParams: { store: slug || null }, queryParamsHandling: 'merge' });
+  }
+
+  loadStore(slug: string): void {
+    const version = ++this.requestVersion;
+    this.loading = true;
+    this.products = this.filteredProducts = this.recommendedProducts = [];
+    this.storeName = '';
+    this.api.get<{ selected: {name: string; slug: string} | null; stores: {name: string; slug: string}[] }>('/products/storefront', {params: slug ? {store: slug} : {}}).subscribe({
+      next: data => {
+        if (version !== this.requestVersion) return;
+        this.stores = data.stores;
+        this.storeName = data.selected?.name ?? '';
+        this.selectedStore = data.selected?.slug ?? '';
+        if (!data.selected) { this.loading = false; return; }
+        this.loadProducts(version);
+        if (this.authService.currentUser()?.tenant_id) this.loadRecommendedProducts();
+      },
+      error: () => { if (version === this.requestVersion) { this.loading = false; this.toast.error('No se pudo cargar la tienda.'); } }
+    });
   }
 
   loadRecommendedProducts() {
@@ -115,10 +141,11 @@ export class CatalogComponent implements OnInit {
     });
   }
 
-  loadProducts() {
+  loadProducts(version = this.requestVersion) {
     this.loading = true;
-    this.api.getProducts().subscribe({
+    this.api.getProducts({store: this.selectedStore}).subscribe({
       next: (res: Product[]) => {
+        if (version !== this.requestVersion) return;
         this.products = res;
         this.filteredProducts = res;
         this.loading = false;
@@ -157,7 +184,7 @@ export class CatalogComponent implements OnInit {
   }
 
   viewProduct(product: Product) {
-    this.router.navigate(['/catalog/product', product.id]);
+    this.router.navigate(['/catalog/product', product.id], {queryParams: {store: this.selectedStore}});
   }
 
   goToReservations() {

@@ -1,3 +1,4 @@
+import { environment } from '../../../../environments/environment';
 import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
@@ -148,9 +149,10 @@ import { ToastContainerComponent } from '../../../shared/components/toast-contai
           </form>
 
           <!-- Dev hint -->
-          <div class="dev-hint">
+          <div class="dev-hint" *ngIf="quickLogin">
             <div class="hint-label">Acceso rápido (dev)</div>
-            <button class="hint-btn" (click)="fillAdmin()">Admin</button>
+            <button class="hint-btn" (click)="fillAdmin()" [disabled]="loading()">Admin tienda</button>
+            <button class="hint-btn" (click)="fillSuperadmin()" [disabled]="loading()">Superadmin SaaS</button>
           </div>
         </div>
       </div>
@@ -391,6 +393,8 @@ import { ToastContainerComponent } from '../../../shared/components/toast-contai
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
     }
 
     .hint-label {
@@ -412,6 +416,7 @@ import { ToastContainerComponent } from '../../../shared/components/toast-contai
   `]
 })
 export class LoginComponent {
+  readonly quickLogin = environment.quickLogin;
   loginForm: FormGroup;
   loading  = signal(false);
   showPassword = signal(false);
@@ -438,7 +443,14 @@ export class LoginComponent {
   }
 
   fillAdmin(): void {
-    this.loginForm.patchValue({ email: 'admin@fashionstore.com', password: 'Admin@1234' });
+    if (!this.quickLogin || this.loading()) return;
+    this.loginForm.patchValue(this.quickLogin.admin);
+    this.onSubmit();
+  }
+
+  fillSuperadmin(): void {
+    if (!this.quickLogin || this.loading()) return;
+    this.loginForm.patchValue(this.quickLogin.superadmin);
     this.onSubmit();
   }
 

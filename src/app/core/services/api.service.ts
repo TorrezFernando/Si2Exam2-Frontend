@@ -109,12 +109,14 @@ export class ApiService {
   // ─── PRODUCTS (CU-04) ─────────────────────────────────────────────────────
 
   getProducts(params?: {
+    store?: string;
     category_id?: number;
     season?: string;
     skip?: number;
     limit?: number;
   }): Observable<Product[]> {
     let p = new HttpParams();
+    if (params?.store) p = p.set('store', params.store);
     if (params?.category_id) p = p.set('category_id', params.category_id);
     if (params?.season)      p = p.set('season', params.season);
     if (params?.skip)        p = p.set('skip', params.skip);
@@ -122,8 +124,8 @@ export class ApiService {
     return this.http.get<Product[]>(`${this.base}/products`, { params: p });
   }
 
-  getProductById(id: number): Observable<Product> {
-    return this.http.get<Product>(`${this.base}/products/${id}`);
+  getProductById(id: number, store?: string): Observable<Product> {
+    return this.http.get<Product>(`${this.base}/products/${id}`, { params: store ? {store} : {} });
   }
 
   createProduct(data: Partial<Product>): Observable<Product> {

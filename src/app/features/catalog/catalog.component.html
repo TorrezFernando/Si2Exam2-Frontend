@@ -1,10 +1,17 @@
 <div class="content-area" style="max-width: 1200px; margin: 0 auto;">
-  <div class="flex items-center justify-between" style="padding-top: var(--space-xl); margin-bottom: var(--space-lg);">
+  <div class="flex items-center justify-between" style="padding-top: var(--space-xl); margin-bottom: var(--space-lg); flex-wrap: wrap; gap: 16px;">
     <div>
-      <h1 style="font-size: 2.25rem; font-weight: 800; background: linear-gradient(135deg, var(--color-primary), var(--color-accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Catálogo Exclusivo</h1>
-      <p class="text-secondary mt-sm">Descubre las últimas tendencias y temporadas.</p>
+      <h1 style="font-size: 2.25rem; font-weight: 800; background: linear-gradient(135deg, var(--color-primary), var(--color-accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">{{ storeName || 'Encuentra tu tienda' }}</h1>
+      <p class="text-secondary mt-sm">{{ storeName ? 'Catálogo de ' + storeName + ' · Descubre sus prendas y colecciones.' : 'Selecciona una tienda para descubrir su catálogo.' }}</p>
     </div>
 
+    <div *ngIf="stores.length > 1 || !storeName" style="min-width: 210px; margin: 12px;">
+      <label for="store-selector" class="text-secondary" style="display: block; margin-bottom: 6px;">Tienda</label>
+      <select id="store-selector" class="form-select" [ngModel]="selectedStore" (ngModelChange)="changeStore($event)" aria-label="Seleccionar tienda">
+        <option value="">Selecciona una tienda</option>
+        <option *ngFor="let store of stores" [value]="store.slug">{{ store.name }}</option>
+      </select>
+    </div>
     <!-- Acciones / Usuario -->
     <div class="flex items-center gap-md">
       <div class="flex gap-sm border-l pl-md" style="border-left: 1px solid var(--border-subtle); padding-left: var(--space-md);">
@@ -97,7 +104,7 @@
     </div>
   </div>
 
-  <h2 *ngIf="!searchQuery" class="text-xl font-bold mb-md">Todos los Productos</h2>
+  <h2 *ngIf="!searchQuery && storeName" class="text-xl font-bold mb-md">Todos los Productos</h2>
 
   <!-- Grid de productos -->
   <div class="grid-4" *ngIf="!loading && filteredProducts.length > 0">
@@ -145,7 +152,7 @@
   <!-- Catálogo vacío -->
   <div *ngIf="!loading && products.length === 0" class="card card-glass text-center p-xl mt-lg">
     <div style="font-size: 3rem; margin-bottom: var(--space-md);">🛍️</div>
-    <h3 class="font-semibold text-xl mb-sm">No hay productos disponibles</h3>
-    <p class="text-secondary">Vuelve más tarde para ver nuestras nuevas colecciones.</p>
+    <h3 class="font-semibold text-xl mb-sm">{{ storeName ? 'No hay productos disponibles' : 'Elige una tienda para comenzar' }}</h3>
+    <p class="text-secondary">{{ storeName ? 'Vuelve más tarde para ver nuestras nuevas colecciones.' : 'Cada tienda tiene sus propias prendas, precios y sucursales.' }}</p>
   </div>
 </div>

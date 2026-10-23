@@ -39,6 +39,7 @@ export interface UserPermission {
 }
 
 export interface User {
+  tenant_name?: string;
   id: number;
   email: string;
   full_name?: string;

@@ -210,7 +210,7 @@ export class ProductDetailComponent implements OnInit {
 
   loadProduct(id: number) {
     this.loading.set(true);
-    this.api.getProductById(id).subscribe({
+    this.api.getProductById(id, this.route.snapshot.queryParamMap.get('store') ?? undefined).subscribe({
       next: (prod) => {
         this.product.set(prod);
         if (prod.variants && prod.variants.length > 0) {
@@ -354,6 +354,6 @@ export class ProductDetailComponent implements OnInit {
   }
 
   goBack() {
-    this.router.navigate(['/catalog']);
+    this.router.navigate(['/catalog'], {queryParams: {store: this.route.snapshot.queryParamMap.get('store')}});
   }
 }
