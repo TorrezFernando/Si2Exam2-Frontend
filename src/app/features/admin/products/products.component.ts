@@ -36,6 +36,11 @@ export class ProductsComponent implements OnInit {
     this.productForm = this.fb.group({
       name: ['', Validators.required],
       description: [''],
+      promotion_percent: [null, [Validators.min(0.01), Validators.max(100)]],
+      promotion_start: [''], promotion_end: [''],
+      weight_grams: [null, [Validators.min(0.001), Validators.max(1000000)]],
+      fabric_type: ['', Validators.maxLength(100)],
+      design: ['', Validators.maxLength(255)],
       base_price: [0, [Validators.required, Validators.min(0)]],
       season: [''],
       supplier_id: [null], season_id: [null], collection_id: [null], category_id: [null],
@@ -143,6 +148,8 @@ export class ProductsComponent implements OnInit {
     this.productForm.reset({
       name: '',
       description: '',
+      promotion_percent: null, promotion_start: '', promotion_end: '',
+      weight_grams: null, fabric_type: '', design: '',
       base_price: 0,
       season: '',
       branch_id: defaultBranch,
@@ -164,6 +171,9 @@ export class ProductsComponent implements OnInit {
     this.productForm.reset({
       name: product.name,
       description: product.description,
+      promotion_percent: product.promotion_percent ?? null,
+      promotion_start: this.localDate(product.promotion_start), promotion_end: this.localDate(product.promotion_end),
+      weight_grams: product.weight_grams ?? null, fabric_type: product.fabric_type ?? '', design: product.design ?? '',
       base_price: product.base_price,
       season: product.season,
       supplier_id: product.supplier_id ?? null, season_id: product.season_id ?? null, collection_id: product.collection_id ?? null, category_id: product.category_id ?? null,
@@ -229,9 +239,18 @@ export class ProductsComponent implements OnInit {
       };
     });
 
+    const hasPromotion = rawForm.promotion_percent !== null && rawForm.promotion_percent !== '';
+    if (hasPromotion && (!rawForm.promotion_start || !rawForm.promotion_end || new Date(rawForm.promotion_start) >= new Date(rawForm.promotion_end))) {
+      this.toast.error('Indica inicio y fin de promoción; el fin debe ser posterior.'); this.loading=false; return;
+    }
     const data = {
       name: rawForm.name,
       description: rawForm.description,
+      promotion_percent: hasPromotion ? Number(rawForm.promotion_percent) : null,
+      promotion_start: hasPromotion ? new Date(rawForm.promotion_start).toISOString() : null,
+      promotion_end: hasPromotion ? new Date(rawForm.promotion_end).toISOString() : null,
+      weight_grams: rawForm.weight_grams === null || rawForm.weight_grams === '' ? null : Number(rawForm.weight_grams),
+      fabric_type: rawForm.fabric_type?.trim() || null, design: rawForm.design?.trim() || null,
       base_price: Number(rawForm.base_price || 0),
       season: rawForm.season,
       supplier_id: rawForm.supplier_id, season_id: rawForm.season_id, collection_id: rawForm.collection_id, category_id: rawForm.category_id,
@@ -283,6 +302,12 @@ export class ProductsComponent implements OnInit {
       });
     }
   }
+  localDate(value?: string | null) {
+    if (!value) return '';
+    const date = new Date(/Z$|[+-]\d\d:\d\d$/.test(value) ? value : value + 'Z');
+    return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);
+  }
+
 }
 
 

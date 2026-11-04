@@ -803,7 +803,8 @@ export class SyncInboxComponent implements OnInit {
 
     this.loadingCatalog.set(true);
     try {
-      const branchId = this.auth.currentUser()?.branch_id || 1;
+      const branchId = this.auth.currentUser()?.branch_id || (await this.offlineSync.getLocalBranches())[0]?.id;
+      if (!branchId) throw new Error('Selecciona y descarga una sucursal desde el catálogo.');
       const cat = await this.offlineSync.downloadCatalog(branchId);
       this.toast.success(`Catálogo actualizado: ${cat.products.length} productos sincronizados localmente.`);
     } catch (err: any) {

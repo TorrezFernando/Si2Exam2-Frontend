@@ -4,7 +4,8 @@ import { Router } from '@angular/router';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { ToastService } from '../../core/services/toast.service';
-import { Reservation } from '../../core/models';
+import { Reservation, LocalReservationOperation } from '../../core/models';
+import { OfflineSyncService } from '../../core/services/offline-sync.service';
 
 @Component({
   selector: 'app-my-reservations',
@@ -35,6 +36,16 @@ import { Reservation } from '../../core/models';
         </div>
       </div>
 
+      <div class="card mb-lg" *ngIf="localReservations.length">
+        <h2 class="font-bold">Reservas guardadas en este dispositivo</h2>
+        <p class="text-secondary">Las pendientes aún no están confirmadas por la tienda. Los conflictos requieren revisar disponibilidad y hacer una nueva reserva.</p>
+        <div *ngFor="let local of localReservations" class="border-b p-sm">
+          <strong>{{ local.sync_status }}</strong> · Sucursal {{ local.branch_id }} · {{ local.created_at | date:'short' }}
+          <span *ngIf="local.server_id"> · Reserva #{{ local.server_id }}</span>
+          <p *ngIf="local.rejection_reason">{{ local.rejection_reason }}</p>
+        </div>
+        <button class="btn btn-outline mt-sm" (click)="syncLocal()" [disabled]="offline.isSyncing()">Sincronizar y actualizar</button>
+      </div>
       <div *ngIf="loading" class="flex justify-center p-xl">
         <div class="spinner"></div>
       </div>
@@ -85,6 +96,7 @@ import { Reservation } from '../../core/models';
   `
 })
 export class MyReservationsComponent implements OnInit {
+  localReservations: LocalReservationOperation[] = [];
   reservations: Reservation[] = [];
   loading = true;
 
@@ -92,7 +104,8 @@ export class MyReservationsComponent implements OnInit {
     private api: ApiService,
     private toast: ToastService,
     public auth: AuthService,
-    private router: Router
+    private router: Router,
+    public offline: OfflineSyncService
   ) {}
 
   get initials(): string {
@@ -106,6 +119,12 @@ export class MyReservationsComponent implements OnInit {
   }
 
   ngOnInit() {
+    this.loadReservations();
+  }
+
+  async syncLocal() {
+    try { await this.offline.syncBatch(); }
+    catch (e: any) { this.toast.error(e?.error?.detail || e.message); }
     this.loadReservations();
   }
 
@@ -136,6 +155,7 @@ export class MyReservationsComponent implements OnInit {
   }
 
   loadReservations() {
+    this.offline.getLocalReservations().then(rows => this.localReservations = rows).catch(() => this.localReservations = []);
     this.loading = true;
     this.api.getReservations().subscribe({
       next: (res) => {

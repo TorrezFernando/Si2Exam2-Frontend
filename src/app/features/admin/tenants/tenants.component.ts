@@ -198,16 +198,17 @@ import { TenantDetail, SaaSStats, TenantCreateRequest } from '../../../core/mode
                   </div>
                 </div>
                 <div class="form-group">
-                  <label>Plazo de Cambio de Prendas (días)</label>
-                  <input type="number" [(ngModel)]="newTenant.exchange_window_days" name="exchange_window_days" min="1" max="365" class="input" />
+                  <label>Plazo de cambio (1–2 días; máximo 48 horas)</label>
+                  <input type="number" [(ngModel)]="newTenant.exchange_window_days" name="exchange_window_days" min="1" max="2" class="input" />
                 </div>
               </div>
 
               <div class="form-group">
                 <label>Plan de Suscripción Asignado *</label>
                 <select [(ngModel)]="newTenant.plan_code" name="plan_code" class="input select">
-                  <option value="basic">Plan Básico ($29.99/mes - Hasta 2 sucursales)</option>
-                  <option value="professional">Plan Profesional ($99.99/mes - Hasta 10 sucursales + IA Gemini)</option>
+                  @for (plan of saas.plans(); track plan.id) {
+                    <option [value]="plan.code">{{ plan.name }} (USD {{ plan.price }}/mes - Hasta {{ plan.max_branches }} sucursales)</option>
+                  }
                 </select>
               </div>
 
@@ -264,15 +265,16 @@ import { TenantDetail, SaaSStats, TenantCreateRequest } from '../../../core/mode
                 </div>
                 <div class="form-group">
                   <label>Plazo Cambio de Prendas (Días)</label>
-                  <input type="number" [(ngModel)]="editWindow" name="editWindow" min="1" max="365" class="input" />
+                  <input type="number" [(ngModel)]="editWindow" name="editWindow" min="1" max="2" class="input" />
                 </div>
               </div>
 
               <div class="form-group">
                 <label>Plan de Suscripción</label>
                 <select [(ngModel)]="editPlanCode" name="editPlanCode" class="input select">
-                  <option value="basic">Plan Básico ($29.99/mes - Hasta 2 sucursales)</option>
-                  <option value="professional">Plan Profesional ($99.99/mes - Hasta 10 sucursales + IA Gemini)</option>
+                  @for (plan of saas.plans(); track plan.id) {
+                    <option [value]="plan.code">{{ plan.name }} (USD {{ plan.price }}/mes - Hasta {{ plan.max_branches }} sucursales)</option>
+                  }
                 </select>
               </div>
 
@@ -616,7 +618,7 @@ export class TenantsManagementComponent implements OnInit {
   newTenant: TenantCreateRequest = {
     name: '',
     subdomain: '',
-    exchange_window_days: 30,
+    exchange_window_days: 2,
     is_active: true,
     plan_code: 'basic',
     admin_email: '',
@@ -629,7 +631,7 @@ export class TenantsManagementComponent implements OnInit {
   selectedTenantForEdit: TenantDetail | null = null;
   editName = '';
   editSubdomain = '';
-  editWindow = 30;
+  editWindow = 2;
   editIsActive = true;
   editPlanCode = 'basic';
 
@@ -640,6 +642,7 @@ export class TenantsManagementComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
+    this.saas.getPlans().subscribe({error: () => this.toast.error('No se pudieron cargar los planes')});
     this.loadAll();
   }
 
@@ -679,23 +682,7 @@ export class TenantsManagementComponent implements OnInit {
 
   // ─── Quick Plan Toggle ─────────────────────────────────────────────────────
   togglePlan(tenant: TenantDetail): void {
-    const isPro = tenant.active_plan?.code === 'professional';
-    const targetPlan = isPro ? 'basic' : 'professional';
-    const targetName = isPro ? 'Plan Básico' : 'Plan Profesional';
-
-    const ok = confirm(`¿Deseas cambiar el plan de "${tenant.name}" a ${targetName}?`);
-    if (!ok) return;
-
-    this.saas.changeTenantPlan(tenant.id, targetPlan).subscribe({
-      next: () => {
-        this.toast.success(`Plan de "${tenant.name}" actualizado a ${targetName}!`);
-        this.loadAll();
-      },
-      error: (err) => {
-        const detail = err.error?.detail || 'No se pudo cambiar el plan';
-        this.toast.error(detail);
-      }
-    });
+    this.openEditModal(tenant);
   }
 
   // ─── Modal Crear ───────────────────────────────────────────────────────────
@@ -703,7 +690,7 @@ export class TenantsManagementComponent implements OnInit {
     this.newTenant = {
       name: '',
       subdomain: '',
-      exchange_window_days: 30,
+      exchange_window_days: 2,
       is_active: true,
       plan_code: 'basic',
       admin_email: '',

@@ -114,6 +114,14 @@ export interface Category {
 }
 
 export interface Product {
+  effective_price?: number;
+  promotion_active?: boolean;
+  promotion_percent?: number | null;
+  promotion_start?: string | null;
+  promotion_end?: string | null;
+  weight_grams?: number | null;
+  fabric_type?: string | null;
+  design?: string | null;
   supplier_id?: number;
   season_id?: number;
   collection_id?: number;
@@ -132,6 +140,7 @@ export interface Product {
 }
 
 export interface ProductVariant {
+  effective_price?: number;
   id?: number;
   product_id?: number;
   size: string;
@@ -313,6 +322,9 @@ export interface LocalVariant {
 }
 
 export interface LocalProduct {
+  weight_grams?: number | null;
+  fabric_type?: string | null;
+  design?: string | null;
   id: number;
   tenant_id?: number;
   name: string;
@@ -390,6 +402,8 @@ export interface LocalReservationOperation {
 
 export interface SyncQueueItem {
   id?: number;
+  branch_id: number;
+  next_retry_at?: number;
   client_operation_uuid: string;
   operation_type: 'sale' | 'reservation';
   status: SyncOperationStatus;

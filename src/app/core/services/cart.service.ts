@@ -12,28 +12,42 @@ export interface CartItem {
   providedIn: 'root'
 })
 export class CartService {
-  private readonly CART_KEY = 'fashionstore_cart';
+  private get cartKey(): string {
+    try {
+      const user = JSON.parse(localStorage.getItem('fs_user') || 'null');
+      if (user?.tenant_id && user?.id) return `fashionstore_cart_t${user.tenant_id}_u${user.id}`;
+    } catch { /* Invalid cached profile has no account cart. */ }
+    return 'fashionstore_cart_guest';
+  }
   
   // Usamos signal para reactividad en Angular 17+
   cartItems = signal<CartItem[]>(this.loadCart());
   
   totalItemsCount = computed(() => this.cartItems().reduce((acc, item) => acc + item.quantity, 0));
 
-  constructor() {}
+  constructor() {
+    window.addEventListener('storage', event => {
+      if (event.key === 'fs_user' || event.key === 'fs_access_token' || event.key === this.cartKey) {
+        this.cartItems.set(this.loadCart());
+      }
+    });
+  }
 
   /**
    * Carga el carrito del LocalStorage
    */
   private loadCart(): CartItem[] {
-    const saved = localStorage.getItem(this.CART_KEY);
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = JSON.parse(localStorage.getItem(this.cartKey) || '[]');
+      return Array.isArray(saved) ? saved : [];
+    } catch { return []; }
   }
 
   /**
    * Guarda el carrito en LocalStorage
    */
   private saveCart(items: CartItem[]) {
-    localStorage.setItem(this.CART_KEY, JSON.stringify(items));
+    localStorage.setItem(this.cartKey, JSON.stringify(items));
     this.cartItems.set(items);
   }
 
@@ -56,7 +70,7 @@ export class CartService {
         product,
         variant,
         quantity,
-        unit_price: variant?.price_override ?? product.base_price
+        unit_price: variant?.effective_price ?? variant?.price_override ?? product.effective_price ?? product.base_price
       });
     }
 

@@ -16,7 +16,7 @@ export const routes: Routes = [
   // ─── Panel Admin ─────────────────────────────────────────────────────
   {
     path: 'admin',
-    canActivate: [permissionGuard('users:read', 'catalog:write', 'branches:write', 'roles:manage', 'sales:read', 'reservations:read')],
+    canActivate: [permissionGuard('inventory:read', 'inventory:write', 'users:read', 'catalog:write', 'branches:write', 'roles:manage', 'sales:read', 'reservations:read')],
     loadChildren: () =>
       import('./features/admin/admin.routes').then(m => m.adminRoutes)
   },

@@ -13,7 +13,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   // Clonar el request con el header Authorization si hay token
   const headersConfig: Record<string, string> = {};
-  if (token) {
+  if (token && !req.headers.has('Authorization')) {
     headersConfig['Authorization'] = `Bearer ${token}`;
   }
   const selectedTenant = localStorage.getItem('fs_selected_tenant_id');
@@ -28,7 +28,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   return next(authReq).pipe(
     catchError((error: HttpErrorResponse) => {
       // 401 Unauthorized → token expirado, hacer logout
-      if (error.status === 401) {
+      if (error.status === 401 && authReq.headers.get('Authorization') === `Bearer ${auth.getToken()}`) {
         auth.logout();
       }
       return throwError(() => error);

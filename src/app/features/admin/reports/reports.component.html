@@ -1,4 +1,17 @@
-<div class="reports-container">
+<section class="card p-lg mb-lg" *ngIf="fullReturns as returns">
+  <h2>Devoluciones completas registradas</h2>
+  <p>{{returns.count}} comprobantes · Efectivo devuelto: {{returns.refunded | number:'1.2-2'}}</p>
+  <p>Por fecha de devolución. Incluye los comprobantes del nuevo flujo; no reconstruye devoluciones históricas sin comprobante.</p>
+</section>
+<section class="card p-lg mb-lg" *ngIf="settlements as changes">
+  <h2>Liquidaciones de cambios en efectivo</h2>
+  <p>Cobrado: {{changes.collected | number:'1.2-2'}} · Devuelto: {{changes.refunded | number:'1.2-2'}} · Neto: {{changes.net | number:'1.2-2'}}</p>
+  <p>Se filtran por fecha del cambio; las ventas originales conservan su importe. No incluye reembolsos de devoluciones completas.</p>
+  <p *ngIf="changes.unverified_count">{{changes.unverified_count}} cambios históricos sin liquidación documentada.</p>
+</section>
+<app-inventory-report></app-inventory-report>
+<a *ngIf="auth.hasPermission('sales:read')" class="btn btn-primary" href="/admin/analytics">Reportes IA y predicciones</a>
+<div class="reports-container" *ngIf="auth.hasPermission('sales:read')">
   <div class="header-section">
     <h1>Reportes de Ventas</h1>
     <p class="subtitle">Analiza las ventas, descargas e ingresos de las sucursales</p>

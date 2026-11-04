@@ -6,6 +6,7 @@ export const adminRoutes: Routes = [
     path: '',
     component: AdminLayoutComponent,
     children: [
+      { path: 'analytics', loadComponent: () => import('./analytics/analytics.component').then(m => m.AnalyticsComponent) },
       { path: "operations", loadComponent: () => import("./operations/operations.component").then(m => m.OperationsComponent) },
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
       {

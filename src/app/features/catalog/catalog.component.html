@@ -50,6 +50,15 @@
   </div>
 
   <!-- Barra de búsqueda -->
+  <div *ngIf="authService.currentUser()?.tenant_id" class="card mb-lg flex gap-md items-center" style="flex-wrap: wrap;">
+    <label for="offline-branch">Catálogo sin conexión</label>
+    <select id="offline-branch" class="form-control" [(ngModel)]="offlineBranchId" style="max-width: 260px;">
+      <option *ngFor="let branch of offlineBranches" [ngValue]="branch.id">{{ branch.name }}</option>
+    </select>
+    <button class="btn btn-outline" (click)="downloadOffline()" [disabled]="savingOffline || !offlineBranchId || network.isOffline()">
+      {{ savingOffline ? 'Guardando…' : 'Guardar catálogo en este dispositivo' }}
+    </button>
+  </div>
   <div class="search-container mb-xl">
     <div class="search-input-wrapper">
       <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -96,7 +105,7 @@
             <p class="text-xs text-secondary truncate mt-xs">📍 {{ getAvailableBranchesText(prod) }}</p>
           </div>
           <div class="flex items-center justify-between mt-sm">
-            <span class="font-bold text-xl text-primary">${{ prod.base_price.toFixed(2) }}</span>
+            <span class="font-bold text-xl text-primary">${{ (prod.effective_price ?? prod.base_price).toFixed(2) }}</span>
             <button class="btn btn-accent btn-sm" (click)="viewProduct(prod)">👁️ Ver</button>
           </div>
         </div>
@@ -133,7 +142,7 @@
         </div>
 
         <div class="flex items-center justify-between mt-sm">
-          <span class="font-bold text-xl text-primary">${{ prod.base_price.toFixed(2) }}</span>
+          <span class="font-bold text-xl text-primary">${{ (prod.effective_price ?? prod.base_price).toFixed(2) }}</span>
           <button class="btn btn-accent btn-sm" (click)="viewProduct(prod)">
             👁️ Ver Detalles
           </button>

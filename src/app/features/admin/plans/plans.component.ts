@@ -4,7 +4,7 @@ import { RouterLink } from '@angular/router';
 import { SaasService } from '../../../core/services/saas.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { ToastService } from '../../../core/services/toast.service';
-import { SubscriptionPlan, MySubscriptionResponse } from '../../../core/models';
+import { MySubscriptionResponse } from '../../../core/models';
 
 @Component({
   selector: 'app-plans',
@@ -38,10 +38,10 @@ import { SubscriptionPlan, MySubscriptionResponse } from '../../../core/models';
 
       <!-- Current Subscription Banner -->
       @if (sub(); as s) {
-        <div class="current-plan-card" [class.pro]="s.plan?.code === 'professional'">
+        <div class="current-plan-card" [class.pro]="s.plan?.has_ai_reports">
           <div class="plan-header">
             <div class="plan-badge-wrapper">
-              <span class="badge" [ngClass]="s.plan?.code === 'professional' ? 'badge-primary' : 'badge-warning'">
+              <span class="badge" [ngClass]="s.plan?.has_ai_reports ? 'badge-primary' : 'badge-warning'">
                 ● Plan Actual: {{ s.plan?.name || (s.is_superadmin ? 'SaaS Superadmin Global' : 'Plan Básico') }}
               </span>
               <span class="status-pill active">Estado: {{ s.status | uppercase }}</span>
@@ -67,7 +67,7 @@ import { SubscriptionPlan, MySubscriptionResponse } from '../../../core/models';
                 </div>
                 <span class="usage-helper">
                   @if (u.branches_count >= u.branches_limit) {
-                    ⚠️ Límite de sucursales alcanzado. Actualiza a Plan Profesional para habilitar hasta 10 sucursales.
+                    ⚠️ Límite de sucursales alcanzado. Consulta los planes disponibles o desactiva una sucursal.
                   } @else {
                     {{ u.branches_limit - u.branches_count }} sucursales disponibles para aperturar.
                   }
@@ -82,7 +82,7 @@ import { SubscriptionPlan, MySubscriptionResponse } from '../../../core/models';
                 <div class="stat-details">
                   <span class="stat-title">Reportes Generativos con IA</span>
                   <strong class="stat-val" [class.text-success]="s.plan?.has_ai_reports" [class.text-muted]="!s.plan?.has_ai_reports">
-                    {{ s.plan?.has_ai_reports ? 'Habilitado (Gemini AI)' : 'Bloqueado (Solo Plan Pro)' }}
+                    {{ s.plan?.has_ai_reports ? 'Habilitado (Gemini AI)' : 'No incluido en este plan' }}
                   </strong>
                 </div>
               </div>
@@ -94,7 +94,7 @@ import { SubscriptionPlan, MySubscriptionResponse } from '../../../core/models';
                 </div>
                 <div class="stat-details">
                   <span class="stat-title">Caja Offline-First</span>
-                  <strong class="stat-val text-success">Activo (Ventas y Reservas sin red)</strong>
+                  <strong class="stat-val text-success">{{ s.plan?.has_offline_sync ? 'Habilitado' : 'No incluido en este plan' }}</strong>
                 </div>
               </div>
 
@@ -105,7 +105,7 @@ import { SubscriptionPlan, MySubscriptionResponse } from '../../../core/models';
                 </div>
                 <div class="stat-details">
                   <span class="stat-title">Ventana para Cambio de Prendas</span>
-                  <strong class="stat-val text-primary">{{ s.tenant?.exchange_window_days || 30 }} días configurados</strong>
+                  <strong class="stat-val text-primary">{{ s.tenant?.exchange_window_days || 2 }} días configurados</strong>
                 </div>
               </div>
             </div>
@@ -120,175 +120,28 @@ import { SubscriptionPlan, MySubscriptionResponse } from '../../../core/models';
       </div>
 
       <div class="plans-grid">
-
-        <!-- PLAN BÁSICO -->
-        <div class="plan-card" [class.is-current]="isCurrentPlan('basic')">
-          @if (isCurrentPlan('basic')) {
-            <div class="ribbon-current">Plan Actual</div>
-          }
-          <div class="plan-card-body">
-            <div class="plan-name">Plan Básico</div>
-            <div class="plan-desc">Para boutiques emergentes, tiendas de ropa independientes y puntos de venta únicos.</div>
-            
-            <div class="plan-pricing">
-              <span class="currency">$</span>
-              <span class="amount">29.99</span>
-              <span class="period">/ mes</span>
-            </div>
-
+        @for (plan of saas.plans(); track plan.id) {
+          <div class="plan-card" [class.pro]="plan.has_ai_reports" [class.is-current]="isCurrentPlan(plan.code)">
+            <div class="plan-name">{{ plan.name }}</div>
+            <div class="plan-pricing"><span class="currency">USD</span><span class="amount">{{ plan.price | number:'1.2-2' }}</span><span class="period">/ mes</span></div>
             <ul class="features-list">
-              <li class="feature-item enabled">
-                <span class="f-icon">✓</span>
-                <span><strong>Hasta 2 sucursales</strong> físicas activas</span>
-              </li>
-              <li class="feature-item enabled">
-                <span class="f-icon">✓</span>
-                <span>Catálogo de productos, tallas, colores y SKUs</span>
-              </li>
-              <li class="feature-item enabled">
-                <span class="f-icon">✓</span>
-                <span>Control de inventario por almacén</span>
-              </li>
-              <li class="feature-item enabled">
-                <span class="f-icon">✓</span>
-                <span>Ventas POS presenciales y pedidos online</span>
-              </li>
-              <li class="feature-item enabled">
-                <span class="f-icon">✓</span>
-                <span><strong>Sincronización Offline First</strong> en mostrador</span>
-              </li>
-              <li class="feature-item disabled">
-                <span class="f-icon">✕</span>
-                <span>Sin reportes generativos predictivos con IA</span>
-              </li>
-              <li class="feature-item disabled">
-                <span class="f-icon">✕</span>
-                <span>Soporte estándar por correo</span>
-              </li>
+              <li>Hasta {{ plan.max_branches }} sucursales activas</li>
+              <li>Catálogo, ventas, reservas e inventario por empresa</li>
+              <li>Reportes con IA: {{ plan.has_ai_reports ? 'Incluidos' : 'No incluidos' }}</li>
+              <li>Sincronización offline: {{ plan.has_offline_sync ? 'Incluida' : 'No incluida' }}</li>
+              <li>Cambios de prendas: hasta 48 horas</li>
             </ul>
-
             <div class="plan-cta-box">
-              @if (isCurrentPlan('basic')) {
-                <button class="btn btn-secondary w-full" disabled>
-                  ✓ Plan Actual en Uso
-                </button>
-              } @else {
-                <button class="btn btn-outline w-full" (click)="confirmPlanChange('basic', 'Plan Básico')">
-                  Cambiar a Plan Básico
-                </button>
-              }
+              <button class="btn btn-primary w-full" [disabled]="isCurrentPlan(plan.code) || changing" (click)="confirmPlanChange(plan.code, plan.name)">
+                {{ isCurrentPlan(plan.code) ? 'Plan actual' : 'Cambiar a ' + plan.name }}
+              </button>
             </div>
           </div>
-        </div>
-
-        <!-- PLAN PROFESIONAL -->
-        <div class="plan-card pro" [class.is-current]="isCurrentPlan('professional')">
-          <div class="popular-tag">RECOMENDADO / MÁS POPULAR</div>
-          @if (isCurrentPlan('professional')) {
-            <div class="ribbon-current">Plan Actual</div>
-          }
-          <div class="plan-card-body">
-            <div class="plan-name">Plan Profesional</div>
-            <div class="plan-desc">Para cadenas de moda en expansión que necesitan múltiples sucursales e inteligencia artificial.</div>
-            
-            <div class="plan-pricing">
-              <span class="currency">$</span>
-              <span class="amount">99.99</span>
-              <span class="period">/ mes</span>
-            </div>
-
-            <ul class="features-list">
-              <li class="feature-item enabled highlight">
-                <span class="f-icon">✓</span>
-                <span><strong>Hasta 10 sucursales</strong> físicas simultáneas</span>
-              </li>
-              <li class="feature-item enabled highlight">
-                <span class="f-icon">✨</span>
-                <span><strong>Reportes Inteligentes con IA (Gemini)</strong>: tendencias y proyecciones</span>
-              </li>
-              <li class="feature-item enabled highlight">
-                <span class="f-icon">✨</span>
-                <span><strong>Probador Virtual IA (Try-On)</strong> y recomendaciones</span>
-              </li>
-              <li class="feature-item enabled">
-                <span class="f-icon">✓</span>
-                <span>Transferencias de stock entre sucursales</span>
-              </li>
-              <li class="feature-item enabled">
-                <span class="f-icon">✓</span>
-                <span><strong>Sincronización Offline First</strong> garantizada</span>
-              </li>
-              <li class="feature-item enabled">
-                <span class="f-icon">✓</span>
-                <span>Configuración de plazos de cambio de prendas</span>
-              </li>
-              <li class="feature-item enabled">
-                <span class="f-icon">✓</span>
-                <span>Soporte prioritario 24/7 y SLA garantizado</span>
-              </li>
-            </ul>
-
-            <div class="plan-cta-box">
-              @if (isCurrentPlan('professional')) {
-                <button class="btn btn-primary w-full" disabled>
-                  ✓ Plan Profesional Activo
-                </button>
-              } @else {
-                <button class="btn btn-primary w-full glow" (click)="confirmPlanChange('professional', 'Plan Profesional')">
-                  🚀 Actualizar a Plan Profesional
-                </button>
-              }
-            </div>
-          </div>
-        </div>
-
+        } @empty {
+          <p>No hay planes disponibles. Vuelve a cargar la página para consultar el catálogo.</p>
+        }
       </div>
-
-      <!-- Feature Matrix -->
-      <div class="matrix-card">
-        <h3>Matriz Detallada de Capacidades</h3>
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Característica</th>
-              <th class="text-center">Plan Básico ($29.99/mes)</th>
-              <th class="text-center text-primary">Plan Profesional ($99.99/mes)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Sucursales Físicas Habilitadas</td>
-              <td class="text-center">Máximo 2</td>
-              <td class="text-center font-bold text-primary">Hasta 10</td>
-            </tr>
-            <tr>
-              <td>Operación Offline en Caja (Sin Internet)</td>
-              <td class="text-center"><span class="check-yes">✅ Incluido</span></td>
-              <td class="text-center"><span class="check-yes">✅ Incluido</span></td>
-            </tr>
-            <tr>
-              <td>Reportes Analíticos de Ventas e Inventario</td>
-              <td class="text-center"><span class="check-yes">✅ Estándar</span></td>
-              <td class="text-center"><span class="check-yes">✅ Avanzados + Métricas</span></td>
-            </tr>
-            <tr>
-              <td>Reportes Predictivos con IA (Gemini AI)</td>
-              <td class="text-center"><span class="check-no">❌ No disponible</span></td>
-              <td class="text-center"><span class="check-yes font-bold">✨ Gemini 2.5 Generativo</span></td>
-            </tr>
-            <tr>
-              <td>Probador Virtual de Prendas (Virtual Try-on)</td>
-              <td class="text-center"><span class="check-no">❌ No disponible</span></td>
-              <td class="text-center"><span class="check-yes font-bold">✨ Incluido con IA</span></td>
-            </tr>
-            <tr>
-              <td>Plazo Configurable de Cambio de Prendas</td>
-              <td class="text-center">15 días fijos</td>
-              <td class="text-center text-primary">Totalmente personalizable (1 a 365 días)</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <p class="text-secondary">Precios demostrativos en USD por mes. El cambio actualiza la suscripción; no realiza un cobro automático.</p>
 
     </div>
   `,
@@ -490,7 +343,7 @@ import { SubscriptionPlan, MySubscriptionResponse } from '../../../core/models';
 
     .plans-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
       gap: 28px;
       margin-bottom: 40px;
 
@@ -658,7 +511,10 @@ export class SubscriptionPlansComponent implements OnInit {
     private toast: ToastService,
   ) {}
 
+  changing = false;
+
   ngOnInit(): void {
+    this.saas.getPlans().subscribe({error: () => this.toast.error('No se pudieron cargar los planes')});
     this.loadData();
   }
 
@@ -675,16 +531,20 @@ export class SubscriptionPlansComponent implements OnInit {
   }
 
   confirmPlanChange(targetPlanCode: string, planName: string): void {
+    if (this.changing) return;
     const current = this.sub()?.plan?.name || 'Plan Básico';
     const ok = confirm(`¿Confirmas que deseas cambiar tu suscripción a ${planName}?\n\nTu plan actual (${current}) será reemplazado inmediatamente.`);
     if (!ok) return;
 
+    this.changing = true;
     this.saas.changeMyPlan(targetPlanCode).subscribe({
       next: (res) => {
+        this.changing = false;
         this.toast.success(`¡Suscripción actualizada exitosamente a ${planName}!`);
         this.loadData();
       },
       error: (err) => {
+        this.changing = false;
         const detail = err.error?.detail || 'No se pudo actualizar el plan';
         this.toast.error(detail);
       }

@@ -1,3 +1,4 @@
+import { IncomingComponent } from './incoming.component';
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -5,8 +6,9 @@ import { ApiService } from '../../../core/services/api.service';
 import { AuthService } from '../../../core/services/auth.service';
 
 @Component({
-  standalone: true, imports: [CommonModule, FormsModule],
+  standalone: true, imports: [CommonModule, FormsModule, IncomingComponent],
   template: `<div class="content-area">
+    <app-incoming-stock *ngIf="auth.hasPermission('inventory:read') || auth.hasPermission('inventory:write')"></app-incoming-stock>
     <h1>Gestión comercial</h1><p role="status">{{ message }}</p>
     <div class="card" *ngIf="auth.hasPermission('catalog:write')">
       <h2>Proveedores y clasificación</h2>

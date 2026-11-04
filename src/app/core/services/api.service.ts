@@ -163,8 +163,8 @@ export class ApiService {
   // ─── INVENTORY (CU-06, CU-07) ─────────────────────────────────────────────
 
   /** Consultar stock de una variante en todas las sucursales (CU-06) */
-  getStockByVariant(variantId: number): Observable<Inventory[]> {
-    return this.http.get<Inventory[]>(`${this.base}/inventory/variant/${variantId}`);
+  getStockByVariant(variantId: number, store?: string): Observable<Inventory[]> {
+    return this.http.get<Inventory[]>(`${this.base}/inventory/variant/${variantId}`, {params: store ? {store} : {}});
   }
 
   /** Consultar stock de una sucursal (CU-06) */

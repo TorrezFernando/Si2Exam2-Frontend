@@ -7,6 +7,7 @@ import { ToastService } from '../../core/services/toast.service';
 import { CartService } from '../../core/services/cart.service';
 import { AuthService } from '../../core/services/auth.service';
 import { Product, ProductVariant, Inventory } from '../../core/models';
+import { OfflineSyncService } from '../../core/services/offline-sync.service';
 import { environment } from '../../../environments/environment';
 
 @Component({
@@ -46,7 +47,7 @@ import { environment } from '../../../environments/environment';
               <span class="text-secondary text-sm">{{ product()?.category?.name || 'Categoría general' }}</span>
             </div>
             <h1 style="font-size: 2.5rem; font-weight: 800; line-height: 1.2;">{{ product()?.name }}</h1>
-            <div class="font-bold text-3xl text-primary mt-sm">\${{ (selectedVariant()?.price_override ?? product()?.base_price)?.toFixed(2) }}</div>
+            <div class="font-bold text-3xl text-primary mt-sm">\${{ (selectedVariant()?.effective_price ?? selectedVariant()?.price_override ?? product()?.effective_price ?? product()?.base_price)?.toFixed(2) }}</div>
           </div>
 
           <div class="text-secondary" style="line-height: 1.6;">
@@ -66,6 +67,12 @@ import { environment } from '../../../environments/environment';
                   {{ tryOnState === 'done' ? '¡Listo! Así te verías con esta prenda.' : '' }}
                   {{ tryOnState === 'error' ? tryOnError : '' }}
                 </p>
+          <p *ngIf="product()?.promotion_active" class="badge badge-primary">Promoción: {{product()?.promotion_percent}}% de descuento. Hasta {{product()?.promotion_end | date:'short'}}.</p>
+          <dl class="text-secondary mt-sm">
+            <div *ngIf="product()?.weight_grams != null"><dt>Peso</dt><dd>{{ product()?.weight_grams | number:'1.0-3' }} g</dd></div>
+            <div *ngIf="product()?.fabric_type"><dt>Tipo de tela</dt><dd>{{ product()?.fabric_type }}</dd></div>
+            <div *ngIf="product()?.design"><dt>Diseño</dt><dd>{{ product()?.design }}</dd></div>
+          </dl>
               </div>
               <button class="btn btn-sm btn-outline" style="border-color: var(--color-primary); color: var(--color-primary);"
                       (click)="tryOnInput.click()"
@@ -196,7 +203,8 @@ export class ProductDetailComponent implements OnInit {
     private toast: ToastService,
     private cartService: CartService,
     private authService: AuthService,
-    private http: HttpClient
+    private http: HttpClient,
+    private offline: OfflineSyncService
   ) {}
 
   ngOnInit(): void {
@@ -226,9 +234,14 @@ export class ProductDetailComponent implements OnInit {
           });
         }
       },
-      error: () => {
-        this.toast.error('No se pudo cargar el producto.');
-        this.loading.set(false);
+      error: async () => {
+        try {
+          const local = (await this.offline.getLocalProducts()).find(p => p.id === id);
+          if (!local) throw new Error('Producto no descargado.');
+          this.product.set(local as unknown as Product);
+          if (local.variants.length) this.selectVariant(local.variants[0] as unknown as ProductVariant);
+        } catch { this.toast.error('No se pudo cargar el producto de esta cuenta.'); }
+        finally { this.loading.set(false); }
       }
     });
   }
@@ -245,9 +258,17 @@ export class ProductDetailComponent implements OnInit {
 
   loadInventory(variantId: number) {
     this.inventory.set([]);
-    this.api.getStockByVariant(variantId).subscribe({
-      next: (inv) => this.inventory.set(inv),
-      error: () => console.error('Error loading inventory')
+    this.api.getStockByVariant(variantId, this.route.snapshot.queryParamMap.get('store') ?? undefined).subscribe({
+      next: (inv) => { if (this.selectedVariant()?.id === variantId) this.inventory.set(inv); },
+      error: async () => {
+        try {
+          const variant = await this.offline.getLocalVariant(variantId);
+          const branches = await this.offline.getLocalBranches();
+          if (variant && branches[0] && this.selectedVariant()?.id === variantId) {
+            this.inventory.set([{id: 0, variant_id: variantId, branch_id: branches[0].id, stock: variant.stock}]);
+          }
+        } catch { /* No local snapshot for this account. */ }
+      }
     });
   }
 
@@ -286,16 +307,8 @@ export class ProductDetailComponent implements OnInit {
       return;
     }
 
-    this.api.createReservation({
-      branch_id: 1,
-      items: [{ variant_id: variantId, quantity: this.quantity() }]
-    }).subscribe({
-      next: () => {
-        this.toast.success('✅ Reserva creada exitosamente');
-        this.quantity.set(1);
-      },
-      error: (e) => this.toast.error('Error al crear la reserva: ' + (e?.error?.detail || e.message))
-    });
+    this.addToCart();
+    this.router.navigate(['/cart']);
   }
 
   updateQuantity(delta: number) {

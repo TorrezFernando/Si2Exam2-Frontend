@@ -1,3 +1,4 @@
+import { FullReturnComponent } from './full-return.component';
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -8,7 +9,7 @@ import { ToastService } from '../../core/services/toast.service';
 import { NetworkService } from '../../core/services/network.service';
 import { OfflineSyncService } from '../../core/services/offline-sync.service';
 import { Product, ProductVariant, Reservation, Branch } from '../../core/models';
-import { offlineDb } from '../../core/db/app-database';
+import { GarmentExchangesComponent } from './exchanges.component';
 
 interface PosCartItem {
   variant: ProductVariant;
@@ -20,8 +21,10 @@ interface PosCartItem {
 @Component({
   selector: 'app-cashier',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [FullReturnComponent, CommonModule, FormsModule, RouterLink, GarmentExchangesComponent],
   template: `
+    <app-full-return (changed)="loadProducts(); loadOrders()"></app-full-return>
+      <app-garment-exchanges (changed)="loadProducts(); loadOrders()"></app-garment-exchanges>
     <div class="content-area" style="max-width: 1200px; margin: 0 auto; padding-top: var(--space-xl);">
       <div class="flex items-center justify-between mb-lg">
         <div>
@@ -66,7 +69,7 @@ interface PosCartItem {
             <div class="grid grid-2 gap-md" style="max-height: 500px; overflow-y: auto; padding-right: 12px;">
               <div *ngFor="let prod of filteredProducts" class="card" style="padding: 12px; background: var(--bg-base); border: 1px solid var(--border-subtle);">
                 <h3 class="font-bold text-md truncate" [title]="prod.name">{{ prod.name }}</h3>
-                <p class="text-sm text-primary mb-sm font-semibold">\${{ prod.base_price.toFixed(2) }}</p>
+                <p class="text-sm text-primary mb-sm font-semibold">\${{ (prod.effective_price ?? prod.base_price).toFixed(2) }}</p>
                 
                 <div *ngIf="prod.variants && prod.variants.length > 0" class="flex flex-col gap-xs mt-sm">
                   <div *ngFor="let v of prod.variants" class="flex justify-between items-center bg-hover p-xs" style="border-radius: 4px;">
@@ -261,7 +264,7 @@ export class CashierComponent implements OnInit {
     if (this.network.isOnline()) {
       this.api.getBranches().subscribe(b => this.branches = b.filter(x => this.auth.hasPermission("branches:write") || x.id === this.branchId));
     } else {
-      const localB = await offlineDb.branches.toArray();
+      const localB = await this.offlineSync.getLocalBranches();
       this.branches = localB as any[];
       if (!this.branchId && this.branches.length > 0) {
         this.branchId = this.branches[0].id;
@@ -405,7 +408,7 @@ export class CashierComponent implements OnInit {
       const product = this.products.find(p => p.variants?.some(v => v.id === item.variant_id));
       const variant = product?.variants?.find(v => v.id === item.variant_id);
       if (!product || !variant) { this.toast.error('No se pudo cargar una prenda. Revisa el catálogo.'); return; }
-      loaded.push({ variant, productName: product.name, quantity: item.quantity, unitPrice: variant.price_override ?? product.base_price });
+      loaded.push({ variant, productName: product.name, quantity: item.quantity, unitPrice: variant.effective_price ?? variant.price_override ?? product.effective_price ?? product.base_price });
     }
     this.branchId = reservation.branch_id;
     this.selectedReservation = reservation;
@@ -460,7 +463,7 @@ export class CashierComponent implements OnInit {
         variant,
         productName: product.name,
         quantity: 1,
-        unitPrice: variant.price_override ?? product.base_price
+        unitPrice: variant.effective_price ?? variant.price_override ?? product.effective_price ?? product.base_price
       });
     }
   }
@@ -490,10 +493,16 @@ export class CashierComponent implements OnInit {
 
   async processOfflineOrder(validItems: { variant_id: number; quantity: number; unit_price: number }[]) {
     try {
+      if (this.selectedReservation) throw new Error('La atención de una reserva existente requiere conexión para evitar un segundo descuento de stock.');
+      if (this.paymentMethod !== 'efectivo') throw new Error('Sin conexión solo se admiten pagos en efectivo.');
+      if (!window.confirm('¿Recibiste el pago completo en efectivo? La venta quedará pendiente de sincronización.')) {
+        this.loading = false;
+        return;
+      }
       const saleData = {
         branchId: this.branchId!,
-        userId: this.selectedReservation?.user_id,
-        customerName: this.selectedReservation ? this.getReservationTitle(this.selectedReservation) : 'Venta Presencial Offline',
+        userId: undefined,
+        customerName: 'Venta Presencial',
         paymentMethod: this.paymentMethod,
         totalAmount: this.getTotal(),
         items: validItems.map(i => {
@@ -540,7 +549,7 @@ export class CashierComponent implements OnInit {
       return;
     }
 
-    if (this.network.isOffline()) {
+    if (this.network.isOffline() || (this.paymentMethod === 'efectivo' && !this.selectedReservation)) {
       this.processOfflineOrder(validItems);
       return;
     }
@@ -570,8 +579,8 @@ export class CashierComponent implements OnInit {
       },
       error: (err) => {
         if (!navigator.onLine || err.status === 0 || err.status >= 502) {
-          this.toast.warning('Fallo de red detectado. Guardando venta localmente en IndexedDB...');
-          this.processOfflineOrder(validItems);
+          this.toast.warning('No se pudo confirmar la respuesta. Reintenta esta misma venta para consultar su resultado; no se creará otra operación offline.');
+          this.loading = false;
         } else {
           this.toast.error('Error al registrar la venta: ' + (err.error?.detail || err.message));
           this.loading = false;

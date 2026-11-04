@@ -300,7 +300,7 @@ export class AdminLayoutComponent {
       </svg>`
     },
     {
-      label: 'Reportes',
+      label: 'Reportes y analítica',
       route: '/admin/reports',
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
         <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>
@@ -358,9 +358,7 @@ export class AdminLayoutComponent {
       return role === 'admin' || role === 'superadmin';
     }
     if (item.route === '/admin/reports') {
-      const role = this.auth.userRoleName()?.toLowerCase() || '';
-      if (role.includes('cajero')) return false;
-      return true;
+      return ['sales:read', 'inventory:read', 'inventory:write'].some(p => this.auth.hasPermission(p));
     }
     if (!item.permissions || item.permissions.length === 0) return true;
     return item.permissions.some(p => this.auth.hasPermission(p));

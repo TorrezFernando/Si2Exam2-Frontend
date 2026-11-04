@@ -6,6 +6,9 @@ import { ApiService } from '../../core/services/api.service';
 import { ToastService } from '../../core/services/toast.service';
 import { FormsModule } from '@angular/forms';
 import { Branch } from '../../core/models';
+import { OfflineSyncService } from '../../core/services/offline-sync.service';
+import { AuthService } from '../../core/services/auth.service';
+import { NetworkService } from '../../core/services/network.service';
 
 @Component({
   selector: 'app-cart',
@@ -164,6 +167,9 @@ export class CartComponent implements OnInit {
   maxDate = '';
 
   private cartService = inject(CartService);
+  private offline = inject(OfflineSyncService);
+  private auth = inject(AuthService);
+  private network = inject(NetworkService);
 
   // Usamos computed para acceder reactivamente a los datos del CartService
   cartItems = this.cartService.cartItems;
@@ -176,10 +182,15 @@ export class CartComponent implements OnInit {
   ) {}
 
   ngOnInit() {
-    this.apiService.getBranches(true).subscribe(b => {
-      this.branches = b;
-      if (b.length > 0) this.reservaBranchId = b[0].id;
-    });
+    this.apiService.getBranches(true).subscribe({next: b => {
+        this.branches = b;
+        if (b.length > 0) this.reservaBranchId = b[0].id;
+      }, error: async () => {
+        try {
+          this.branches = await this.offline.getLocalBranches() as Branch[];
+          this.reservaBranchId = this.branches[0]?.id ?? null;
+        } catch { this.branches = []; }
+      }});
     
     const today = new Date();
     this.minDate = today.toISOString().split('T')[0];
@@ -214,19 +225,26 @@ export class CartComponent implements OnInit {
     return true;
   }
 
-  processPayment() {
+  async processPayment() {
     if (this.isProcessing || !this.canPay()) return;
     this.isProcessing = true;
     const items = this.cartItems().map(item => ({ variant_id: item.variant?.id ?? 0, quantity: item.quantity }));
     if (this.paymentMethod === 'reserva') {
-      this.apiService.createReservation({
-        branch_id: Number(this.reservaBranchId), items,
-        pickup_date: new Date(`${this.reservaDate}T${this.reservaTime}`).toISOString()
-      }).subscribe({
-        next: () => this.handleSuccess('Reserva registrada. La sucursal ya puede preparar tus prendas.'),
-        error: err => this.handleError(err)
-      });
+      try {
+        const user = this.auth.currentUser();
+        if (!user) throw new Error('Inicia sesión para reservar.');
+        const pickupDate = new Date(`${this.reservaDate}T${this.reservaTime}`);
+        if (pickupDate.getTime() <= Date.now()) throw new Error('Selecciona una fecha y hora futuras.');
+        if (this.network.isOnline()) await this.offline.downloadCatalog(Number(this.reservaBranchId));
+        await this.offline.recordOfflineReservation({branchId: Number(this.reservaBranchId), userId: user.id,
+          items, pickupDate: pickupDate.toISOString()});
+        this.handleSuccess('Reserva guardada en este dispositivo. Su confirmación depende de la sincronización y del stock disponible.');
+      } catch (err: any) {
+        this.toast.error(err?.error?.detail || err?.message || 'No se pudo guardar la reserva.');
+        this.isProcessing = false;
+      }
     } else {
+      if (this.network.isOffline()) { this.isProcessing = false; this.toast.warning('Los pagos digitales requieren conexión. Puedes guardar una reserva.'); return; }
       this.apiService.createOrder({ items, order_type: 'online_delivery', payment_method: this.paymentMethod,
         request_key: this.requestKey }).subscribe({
         next: order => {

@@ -1,449 +1,194 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, signal, effect } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { offlineDb } from '../db/app-database';
+import { AppDatabase } from '../db/app-database';
+import { OfflineStore } from '../db/offline-store';
 import { NetworkService } from './network.service';
-import {
-  LocalProduct,
-  LocalVariant,
-  LocalSaleOperation,
-  LocalReservationOperation,
-  SyncQueueItem,
-  SyncCatalogResponse,
-  SyncBatchResponse,
-  LocalCustomer,
-  LocalBranch,
-} from '../models';
+import { AuthService } from './auth.service';
+import { LocalProduct, LocalSaleOperation, LocalReservationOperation, SyncBatchResponse, SyncCatalogResponse } from '../models';
 
-@Injectable({
-  providedIn: 'root',
-})
+type Context = {store: OfflineStore; token: string; assert: () => void};
+
+@Injectable({providedIn: 'root'})
 export class OfflineSyncService {
   private readonly http = inject(HttpClient);
   private readonly network = inject(NetworkService);
-  private readonly apiUrl = environment.apiUrl;
-
-  readonly isSyncing = signal<boolean>(false);
-  readonly pendingCount = signal<number>(0);
+  private readonly auth = inject(AuthService);
+  private readonly stores = new Map<string, OfflineStore>();
+  private timer?: ReturnType<typeof setTimeout>;
+  readonly isSyncing = signal(false);
+  readonly pendingCount = signal(0);
   readonly lastSyncTimestamp = signal<string | null>(null);
 
   constructor() {
-    this.refreshPendingCount();
-
-    // Sincronización automática al recuperar conectividad
-    if (typeof window !== 'undefined') {
-      window.addEventListener('online', () => {
-        console.log('[PWA-OFFLINE] Conexión recuperada. Evaluando sincronización automática...');
-        this.syncBatch();
-      });
-    }
+    effect(() => {
+      this.auth.currentUser();
+      clearTimeout(this.timer);
+      this.pendingCount.set(0);
+      this.lastSyncTimestamp.set(null);
+      this.refreshPendingCount().catch(() => {});
+      this.automaticSync();
+    });
+    window.addEventListener('online', () => this.automaticSync());
+    window.addEventListener('storage', event => {
+      if (event.key === 'fs_access_token' || event.key === 'fs_user') {
+        clearTimeout(this.timer);
+        this.pendingCount.set(0);
+        this.lastSyncTimestamp.set(null);
+      }
+    });
   }
 
-  // ─── 1. DESCARGA Y CACHEO DE CATÁLOGO OFFLINE ──────────────────────────────
+  private context(): Context {
+    const user = this.auth.currentUser();
+    const token = this.auth.getToken();
+    if (!user?.tenant_id || !user.id || !token || !user.is_active || this.auth.isSuperAdmin()) {
+      throw new Error('Inicia sesión con una cuenta de empresa para trabajar offline.');
+    }
+    const tenant = user.tenant_id, owner = user.id;
+    const key = `${tenant}:${owner}`;
+    let store = this.stores.get(key);
+    if (!store) { store = new OfflineStore(new AppDatabase(tenant, owner), tenant, owner); this.stores.set(key, store); }
+    const assert = () => {
+      const active = this.auth.currentUser();
+      if (this.auth.getToken() !== token || active?.id !== owner || active?.tenant_id !== tenant) {
+        throw new Error('La sesión cambió. Las operaciones permanecen guardadas en su cuenta original.');
+      }
+      // A tab can retain an old Angular profile after another tab logs in.
+      const claims = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (Number(claims.sub) !== owner || Number(claims.tenant_id) !== tenant) throw new Error('Actualiza la sesión de esta pestaña.');
+    };
+    assert();
+    return {store, token, assert};
+  }
+
+  private async locked<T>(c: Context, action: () => Promise<T>): Promise<T> {
+    if (!navigator.locks) throw new Error('El modo offline requiere HTTPS y un navegador compatible con bloqueo entre pestañas.');
+    return navigator.locks.request(c.store.db.name, async () => {c.assert(); return action();});
+  }
+
+  private automaticSync() {
+    this.syncBatch(undefined, false).catch(() => {});
+  }
+
+  private schedule(c: Context) {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => {
+      try { c.assert(); this.automaticSync(); } catch { /* Account changed. */ }
+    }, 5000);
+  }
 
   async downloadCatalog(branchId: number): Promise<SyncCatalogResponse> {
-    try {
-      const url = `${this.apiUrl}/sync/catalog?branch_id=${branchId}`;
-      const response = await firstValueFrom(this.http.get<SyncCatalogResponse>(url));
-
-      // Guardar productos, variantes y clientes en IndexedDB
-      await offlineDb.transaction('rw', [offlineDb.products, offlineDb.variants, offlineDb.customers, offlineDb.branches], async () => {
-        // Limpiar catálogo previo para la sucursal/tenant
-        await offlineDb.products.clear();
-        await offlineDb.variants.clear();
-        await offlineDb.customers.clear();
-
-        // Guardar sucursal activa
-        await offlineDb.branches.put({
-          id: response.branch_id,
-          tenant_id: response.tenant_id,
-          name: response.branch_name,
-          address: 'Sucursal Sincronizada',
-          is_active: true,
-        });
-
-        // Guardar productos y sus variantes
-        for (const prod of response.products) {
-          await offlineDb.products.put({
-            id: prod.id,
-            tenant_id: response.tenant_id,
-            name: prod.name,
-            description: prod.description,
-            category_id: prod.category_id,
-            category_name: prod.category_name,
-            base_price: prod.base_price,
-            image_url: prod.image_url,
-            variants: prod.variants,
-            updated_at: new Date().toISOString(),
-          });
-
-          for (const v of prod.variants) {
-            await offlineDb.variants.put({
-              id: v.id,
-              product_id: prod.id,
-              sku: v.sku,
-              size: v.size,
-              color: v.color,
-              price: v.price,
-              stock: v.stock,
-              image_url: v.image_url,
-            });
-          }
-        }
-
-        // Guardar clientes
-        for (const cust of response.customers) {
-          await offlineDb.customers.put({
-            id: cust.id,
-            tenant_id: response.tenant_id,
-            full_name: cust.full_name,
-            email: cust.email,
-            phone: cust.phone,
-          });
-        }
-      });
-
-      const now = new Date().toISOString();
-      this.lastSyncTimestamp.set(now);
-      localStorage.setItem('last_offline_catalog_sync', now);
-      localStorage.setItem('exchange_window_days', String(response.exchange_window_days || 30));
-
-      return response;
-    } catch (error) {
-      console.error('[PWA-OFFLINE] Error al descargar catálogo:', error);
-      throw error;
-    }
+    const c = this.context();
+    return this.locked(c, async () => {
+      if (await c.store.pending()) await this.send(c, undefined, true);
+      if (await c.store.pending()) throw new Error('Quedan operaciones pendientes; no se reemplazará su inventario local.');
+      const catalog = await firstValueFrom(this.http.get<SyncCatalogResponse>(
+        `${environment.apiUrl}/sync/catalog`, {params: {branch_id: branchId}, headers: {Authorization: `Bearer ${c.token}`}}));
+      c.assert();
+      if (catalog.branch_id !== branchId) throw new Error('Respuesta de otra sucursal.');
+      await c.store.saveCatalog(catalog, c.assert);
+      this.lastSyncTimestamp.set(new Date().toISOString());
+      return catalog;
+    });
   }
-
-  // ─── 2. LECTURA DE CATÁLOGO DESDE INDEXEDDB ───────────────────────────────
 
   async getLocalProducts(): Promise<LocalProduct[]> {
-    return await offlineDb.products.toArray();
+    const c = this.context();
+    const branch = await c.store.db.branches.toCollection().first();
+    const products = await c.store.db.products.toArray();
+    const variants = await c.store.db.variants.toArray();
+    c.assert();
+    return products.map(p => ({...p, variants: variants.filter(v => v.product_id === p.id).map(v => ({...v,
+      price_override: v.price, quantity: v.stock, inventories: [{branch_id: branch?.id, stock: v.stock}]}))}));
   }
 
-  async getLocalVariant(variantId: number): Promise<LocalVariant | undefined> {
-    return await offlineDb.variants.get(variantId);
+  async getLocalVariant(id: number) { const c = this.context(); const r = await c.store.db.variants.get(id); c.assert(); return r; }
+  async getLocalCustomers() { const c = this.context(); const r = await c.store.db.customers.toArray(); c.assert(); return r; }
+  async getLocalBranches() { const c = this.context(); const r = await c.store.db.branches.toArray(); c.assert(); return r; }
+  async getLocalSales() { const c = this.context(); const r = await c.store.db.local_sales.reverse().sortBy('created_at'); c.assert(); return r; }
+  async getLocalReservations() { const c = this.context(); const r = await c.store.db.local_reservations.reverse().sortBy('created_at'); c.assert(); return r; }
+  async getSyncQueue() { const c = this.context(); const r = await c.store.db.sync_queue.reverse().sortBy('created_at'); c.assert(); return r; }
+
+  private checkRecordingSession(c: Context) {
+    c.assert();
+    const claims = JSON.parse(atob(c.token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    if (!Number.isFinite(claims.exp) || claims.exp * 1000 <= Date.now()) throw new Error('Inicia sesión nuevamente antes de registrar operaciones.');
   }
 
-  async getLocalCustomers(): Promise<LocalCustomer[]> {
-    return await offlineDb.customers.toArray();
+  async recordOfflineSale(sale: {branchId: number; userId?: number; customerName?: string;
+    paymentMethod: string; totalAmount: number; items: {variant_id: number; quantity: number; unit_price: number; variant_name?: string; sku?: string}[]}) {
+    const c = this.context(); this.checkRecordingSession(c);
+    if (!this.auth.hasPermission('sales:write')) throw new Error('Se requiere permiso de caja.');
+    const operation: LocalSaleOperation = {client_operation_uuid: crypto.randomUUID(), branch_id: sale.branchId,
+      user_id: sale.userId, customer_name: sale.customerName, payment_method: sale.paymentMethod,
+      total_amount: sale.totalAmount, items: structuredClone(sale.items), created_at: new Date().toISOString(), sync_status: 'PENDIENTE'};
+    await this.locked(c, () => c.store.record('sale', operation, () => this.checkRecordingSession(c)));
+    await this.refreshPendingCount(); this.automaticSync();
+    return operation;
   }
 
-  // ─── 3. REGISTRO LOCAL DE VENTA OFFLINE ────────────────────────────────────
+  async recordOfflineReservation(reservation: {branchId: number; userId: number; customerName?: string;
+    pickupDate?: string; notes?: string; items: {variant_id: number; quantity: number; unit_price?: number; variant_name?: string; sku?: string}[]}) {
+    const c = this.context(); this.checkRecordingSession(c);
+    if (reservation.userId !== c.store.ownerId && !this.auth.hasPermission('reservations:write')) throw new Error('No puedes reservar para otro cliente.');
+    const operation: LocalReservationOperation = {client_operation_uuid: crypto.randomUUID(), branch_id: reservation.branchId,
+      user_id: reservation.userId, customer_name: reservation.customerName, pickup_date: reservation.pickupDate,
+      notes: reservation.notes, items: structuredClone(reservation.items), created_at: new Date().toISOString(), sync_status: 'PENDIENTE'};
+    await this.locked(c, () => c.store.record('reservation', operation, () => this.checkRecordingSession(c)));
+    await this.refreshPendingCount(); this.automaticSync();
+    return operation;
+  }
 
-  async recordOfflineSale(sale: {
-    branchId: number;
-    userId?: number;
-    customerName?: string;
-    paymentMethod: string;
-    totalAmount: number;
-    items: { variant_id: number; quantity: number; unit_price: number; variant_name?: string; sku?: string }[];
-  }): Promise<LocalSaleOperation> {
-    const uuid = this.generateUuid();
-    const now = new Date().toISOString();
-
-    const localSale: LocalSaleOperation = {
-      client_operation_uuid: uuid,
-      branch_id: sale.branchId,
-      user_id: sale.userId,
-      customer_name: sale.customerName || 'Cliente Venta Rápida',
-      payment_method: sale.paymentMethod,
-      total_amount: sale.totalAmount,
-      items: sale.items,
-      created_at: now,
-      sync_status: 'PENDIENTE',
-    };
-
-    const queueItem: SyncQueueItem = {
-      client_operation_uuid: uuid,
-      operation_type: 'sale',
-      status: 'PENDIENTE',
-      payload: {
-        client_operation_uuid: uuid,
-        user_id: sale.userId,
-        payment_method: sale.paymentMethod,
-        total_amount: sale.totalAmount,
-        created_at: now,
-        items: sale.items.map((i) => ({
-          variant_id: i.variant_id,
-          quantity: i.quantity,
-          unit_price: i.unit_price,
-        })),
-      },
-      created_at: now,
-      updated_at: now,
-      attempts: 0,
-    };
-
-    // Descontar inventario preventivamente en la BD local
-    await offlineDb.transaction('rw', [offlineDb.variants, offlineDb.local_sales, offlineDb.sync_queue], async () => {
-      for (const item of sale.items) {
-        const variant = await offlineDb.variants.get(item.variant_id);
-        if (variant) {
-          const newStock = Math.max(0, variant.stock - item.quantity);
-          await offlineDb.variants.update(item.variant_id, { stock: newStock });
-        }
-      }
-
-      await offlineDb.local_sales.put(localSale);
-      await offlineDb.sync_queue.put(queueItem);
+  async syncBatch(branchId?: number, force = true): Promise<SyncBatchResponse | null> {
+    if (!this.network.isOnline()) return null;
+    let c: Context;
+    try { c = this.context(); } catch { return null; }
+    return this.locked(c, async () => {
+      this.isSyncing.set(true);
+      try { return await this.send(c, branchId, force); }
+      finally { this.isSyncing.set(false); await this.refreshPendingCount(); }
     });
-
-    await this.refreshPendingCount();
-
-    // Si hay conexión, intentar enviar en background
-    if (this.network.isOnline()) {
-      this.syncBatch(sale.branchId).catch((err) =>
-        console.warn('[PWA-OFFLINE] Sincronización diferida por error de red:', err)
-      );
-    }
-
-    return localSale;
   }
 
-  // ─── 4. REGISTRO LOCAL DE RESERVA OFFLINE ──────────────────────────────────
-
-  async recordOfflineReservation(reservation: {
-    branchId: number;
-    userId: number;
-    customerName?: string;
-    pickupDate?: string;
-    notes?: string;
-    items: { variant_id: number; quantity: number; unit_price?: number; variant_name?: string; sku?: string }[];
-  }): Promise<LocalReservationOperation> {
-    const uuid = this.generateUuid();
-    const now = new Date().toISOString();
-
-    const localReservation: LocalReservationOperation = {
-      client_operation_uuid: uuid,
-      branch_id: reservation.branchId,
-      user_id: reservation.userId,
-      customer_name: reservation.customerName,
-      pickup_date: reservation.pickupDate,
-      notes: reservation.notes,
-      items: reservation.items,
-      created_at: now,
-      sync_status: 'PENDIENTE',
-    };
-
-    const queueItem: SyncQueueItem = {
-      client_operation_uuid: uuid,
-      operation_type: 'reservation',
-      status: 'PENDIENTE',
-      payload: {
-        client_operation_uuid: uuid,
-        user_id: reservation.userId,
-        pickup_date: reservation.pickupDate,
-        notes: reservation.notes,
-        items: reservation.items.map((i) => ({
-          variant_id: i.variant_id,
-          quantity: i.quantity,
-        })),
-      },
-      created_at: now,
-      updated_at: now,
-      attempts: 0,
-    };
-
-    // Retener inventario preventivamente en la BD local
-    await offlineDb.transaction('rw', [offlineDb.variants, offlineDb.local_reservations, offlineDb.sync_queue], async () => {
-      for (const item of reservation.items) {
-        const variant = await offlineDb.variants.get(item.variant_id);
-        if (variant) {
-          const newStock = Math.max(0, variant.stock - item.quantity);
-          await offlineDb.variants.update(item.variant_id, { stock: newStock });
-        }
+  private async send(c: Context, branchId?: number, force = false): Promise<SyncBatchResponse | null> {
+    let last: SyncBatchResponse | null = null;
+    while (true) {
+      c.assert();
+      const sent = await c.store.claim(branchId, force, c.assert);
+      if (!sent.length) { if (await c.store.pending()) this.schedule(c); return last; }
+      try {
+        c.assert();
+        const response = await firstValueFrom(this.http.post<SyncBatchResponse>(`${environment.apiUrl}/sync/operations`, {
+          branch_id: sent[0].branch_id,
+          sales: sent.filter(q => q.operation_type === 'sale').map(q => q.payload),
+          reservations: sent.filter(q => q.operation_type === 'reservation').map(q => q.payload),
+        }, {headers: {Authorization: `Bearer ${c.token}`}}));
+        c.assert();
+        await c.store.applyReceipts(sent, response, c.assert);
+        last = last ? {
+          total_processed: last.total_processed + response.total_processed,
+          confirmed_count: last.confirmed_count + response.confirmed_count,
+          conflict_count: last.conflict_count + response.conflict_count,
+          receipts: [...last.receipts, ...response.receipts],
+        } : response;
+      } catch (error: any) {
+        // This is the captured account's DB, never the next account's database.
+        await c.store.failed(sent, error?.error?.detail || error?.message || 'Error de sincronización');
+        if (![401, 403].includes(error?.status)) { try {c.assert(); this.schedule(c);} catch {} }
+        throw error;
       }
-
-      await offlineDb.local_reservations.put(localReservation);
-      await offlineDb.sync_queue.put(queueItem);
-    });
-
-    await this.refreshPendingCount();
-
-    if (this.network.isOnline()) {
-      this.syncBatch(reservation.branchId).catch((err) =>
-        console.warn('[PWA-OFFLINE] Sincronización diferida por error de red:', err)
-      );
     }
-
-    return localReservation;
-  }
-
-  // ─── 5. PROCESAMIENTO POR LOTE (SYNC BATCH) ───────────────────────────────
-
-  async syncBatch(branchId?: number): Promise<SyncBatchResponse | null> {
-    if (this.isSyncing() || !this.network.isOnline()) {
-      return null;
-    }
-
-    const pendingQueue = await offlineDb.sync_queue
-      .where('status')
-      .anyOf(['PENDIENTE', 'RECHAZADA_CONFLICTO'])
-      .toArray();
-
-    if (pendingQueue.length === 0) {
-      await this.refreshPendingCount();
-      return null;
-    }
-
-    this.isSyncing.set(true);
-
-    try {
-      // Determinar branch_id
-      let targetBranchId = branchId;
-      if (!targetBranchId) {
-        const branch = await offlineDb.branches.toCollection().first();
-        targetBranchId = branch ? branch.id : 1;
-      }
-
-      const salesPayload = pendingQueue
-        .filter((q) => q.operation_type === 'sale')
-        .map((q) => q.payload);
-
-      const resPayload = pendingQueue
-        .filter((q) => q.operation_type === 'reservation')
-        .map((q) => q.payload);
-
-      // Marcar cola en estado ENVIANDO
-      const now = new Date().toISOString();
-      for (const item of pendingQueue) {
-        if (item.id) {
-          await offlineDb.sync_queue.update(item.id, {
-            status: 'ENVIANDO',
-            updated_at: now,
-            attempts: (item.attempts || 0) + 1,
-          });
-        }
-      }
-
-      const requestBody = {
-        branch_id: targetBranchId,
-        sales: salesPayload,
-        reservations: resPayload,
-      };
-
-      const response = await firstValueFrom(
-        this.http.post<SyncBatchResponse>(`${this.apiUrl}/sync/operations`, requestBody)
-      );
-
-      // Procesar recibos del servidor (CONFIRMADA o RECHAZADA_CONFLICTO)
-      await offlineDb.transaction(
-        'rw',
-        [offlineDb.local_sales, offlineDb.local_reservations, offlineDb.sync_queue, offlineDb.variants],
-        async () => {
-          for (const receipt of response.receipts) {
-            const queueEntry = await offlineDb.sync_queue
-              .where('client_operation_uuid')
-              .equals(receipt.client_operation_uuid)
-              .first();
-
-            if (receipt.operation_type === 'sale') {
-              const localSale = await offlineDb.local_sales.get(receipt.client_operation_uuid);
-              if (localSale) {
-                await offlineDb.local_sales.update(receipt.client_operation_uuid, {
-                  sync_status: receipt.status,
-                  server_id: receipt.server_id,
-                  rejection_reason: receipt.rejection_reason,
-                });
-
-                // Si fue rechazada por conflicto, restaurar inventario local
-                if (receipt.status === 'RECHAZADA_CONFLICTO') {
-                  for (const it of localSale.items) {
-                    const v = await offlineDb.variants.get(it.variant_id);
-                    if (v) {
-                      await offlineDb.variants.update(it.variant_id, {
-                        stock: v.stock + it.quantity,
-                      });
-                    }
-                  }
-                }
-              }
-            } else if (receipt.operation_type === 'reservation') {
-              const localRes = await offlineDb.local_reservations.get(receipt.client_operation_uuid);
-              if (localRes) {
-                await offlineDb.local_reservations.update(receipt.client_operation_uuid, {
-                  sync_status: receipt.status,
-                  server_id: receipt.server_id,
-                  rejection_reason: receipt.rejection_reason,
-                });
-
-                if (receipt.status === 'RECHAZADA_CONFLICTO') {
-                  for (const it of localRes.items) {
-                    const v = await offlineDb.variants.get(it.variant_id);
-                    if (v) {
-                      await offlineDb.variants.update(it.variant_id, {
-                        stock: v.stock + it.quantity,
-                      });
-                    }
-                  }
-                }
-              }
-            }
-
-            if (queueEntry && queueEntry.id) {
-              await offlineDb.sync_queue.update(queueEntry.id, {
-                status: receipt.status,
-                error_message: receipt.rejection_reason,
-                updated_at: new Date().toISOString(),
-              });
-            }
-          }
-        }
-      );
-
-      return response;
-    } catch (err: any) {
-      console.error('[PWA-OFFLINE] Falló sincronización por lote:', err);
-      // RNF03: PROHIBIDO borrar operaciones locales en caso de error
-      for (const item of pendingQueue) {
-        if (item.id) {
-          await offlineDb.sync_queue.update(item.id, {
-            status: 'PENDIENTE',
-            error_message: err?.message || 'Error de comunicación con el servidor',
-            updated_at: new Date().toISOString(),
-          });
-        }
-      }
-      throw err;
-    } finally {
-      this.isSyncing.set(false);
-      await this.refreshPendingCount();
-    }
-  }
-
-  // ─── 6. CONSULTAS Y HISTORIAL ─────────────────────────────────────────────
-
-  async getLocalSales(): Promise<LocalSaleOperation[]> {
-    return await offlineDb.local_sales.reverse().sortBy('created_at');
-  }
-
-  async getLocalReservations(): Promise<LocalReservationOperation[]> {
-    return await offlineDb.local_reservations.reverse().sortBy('created_at');
-  }
-
-  async getSyncQueue(): Promise<SyncQueueItem[]> {
-    return await offlineDb.sync_queue.reverse().sortBy('created_at');
   }
 
   async refreshPendingCount(): Promise<number> {
-    const count = await offlineDb.sync_queue
-      .where('status')
-      .anyOf(['PENDIENTE', 'RECHAZADA_CONFLICTO', 'ENVIANDO'])
-      .count();
-    this.pendingCount.set(count);
-    return count;
-  }
-
-  private generateUuid(): string {
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-      return crypto.randomUUID();
-    }
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === 'x' ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
+    try {
+      const c = this.context(); const count = await c.store.pending(); c.assert();
+      const snapshot = (await c.store.db.metadata.get('snapshot'))?.value; c.assert();
+      this.pendingCount.set(count);
+      this.lastSyncTimestamp.set(snapshot ? new Date(snapshot.downloadedAt).toISOString() : null);
+      return count;
+    } catch { this.pendingCount.set(0); return 0; }
   }
 }

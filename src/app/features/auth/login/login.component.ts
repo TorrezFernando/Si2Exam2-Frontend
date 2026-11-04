@@ -151,7 +151,8 @@ import { ToastContainerComponent } from '../../../shared/components/toast-contai
           <!-- Dev hint -->
           <div class="dev-hint" *ngIf="quickLogin">
             <div class="hint-label">Acceso rápido (dev)</div>
-            <button class="hint-btn" (click)="fillAdmin()" [disabled]="loading()">Admin tienda</button>
+            <button class="hint-btn" (click)="fillAdmin()" [disabled]="loading()">Admin FashionStore</button>
+            <button class="hint-btn" (click)="fillBoutique()" [disabled]="loading()">Admin Boutique</button>
             <button class="hint-btn" (click)="fillSuperadmin()" [disabled]="loading()">Superadmin SaaS</button>
           </div>
         </div>
@@ -445,6 +446,12 @@ export class LoginComponent {
   fillAdmin(): void {
     if (!this.quickLogin || this.loading()) return;
     this.loginForm.patchValue(this.quickLogin.admin);
+    this.onSubmit();
+  }
+
+  fillBoutique(): void {
+    if (!this.quickLogin || this.loading()) return;
+    this.loginForm.patchValue(this.quickLogin.boutique);
     this.onSubmit();
   }
 

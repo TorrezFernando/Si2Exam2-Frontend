@@ -42,7 +42,7 @@ import { OfflineSyncService } from '../../../core/services/offline-sync.service'
             {{ offlineSync.isSyncing() ? 'Sincronizando...' : 'Sincronizar Ahora' }}
           </button>
 
-          <a routerLink="/admin/sync-inbox" class="btn-inbox">
+          <a routerLink="/sync-inbox" class="btn-inbox">
             Bandeja de Sincronización →
           </a>
         </div>

@@ -1,3 +1,5 @@
+import { AuthService } from '../../../core/services/auth.service';
+import { InventoryReportComponent } from './inventory-report.component';
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -15,6 +17,8 @@ interface ReportSale {
 }
 
 interface ReportResponse {
+  full_returns?: {count:number;refunded:number};
+  exchange_settlements?: {collected:number;refunded:number;net:number;unverified_count:number;count:number};
   total_revenue: number;
   count: number;
   data: ReportSale[];
@@ -23,12 +27,13 @@ interface ReportResponse {
 @Component({
   selector: 'app-reports',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, InventoryReportComponent],
   templateUrl: './reports.component.html',
   styleUrls: ['./reports.component.scss']
 })
 export class ReportsComponent implements OnInit {
   private http = inject(HttpClient);
+  auth = inject(AuthService);
 
   startDate: string = '';
   endDate: string = '';
@@ -36,6 +41,8 @@ export class ReportsComponent implements OnInit {
   paymentMethod: string = '';
 
   sales: ReportSale[] = [];
+  fullReturns: ReportResponse['full_returns'] = undefined;
+  settlements: ReportResponse['exchange_settlements'] = undefined;
   totalRevenue: number = 0;
   totalCount: number = 0;
   loading: boolean = false;
@@ -48,12 +55,14 @@ export class ReportsComponent implements OnInit {
   chatLoading: boolean = false;
 
   ngOnInit() {
-    this.loadReport();
+    if(this.auth.hasPermission('sales:read')) this.loadReport();
   }
 
   loadReport() {
     this.loading = true;
     this.error = '';
+    this.settlements = undefined;
+    this.fullReturns = undefined;
 
     let params = new URLSearchParams();
     if (this.startDate) params.append('start_date', this.startDate);
@@ -66,6 +75,8 @@ export class ReportsComponent implements OnInit {
     this.http.get<ReportResponse>(url).subscribe({
       next: (res) => {
         this.sales = res.data;
+        this.settlements = res.exchange_settlements;
+        this.fullReturns = res.full_returns;
         this.totalRevenue = res.total_revenue;
         this.totalCount = res.count;
         this.loading = false;

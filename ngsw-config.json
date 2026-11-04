@@ -28,19 +28,5 @@
       }
     }
   ],
-  "dataGroups": [
-    {
-      "name": "api-offline-catalog",
-      "urls": [
-        "/api/v1/sync/catalog**",
-        "/api/v1/products**"
-      ],
-      "cacheConfig": {
-        "maxSize": 100,
-        "maxAge": "1d",
-        "timeout": "5s",
-        "strategy": "freshness"
-      }
-    }
-  ]
+  "dataGroups": []
 }

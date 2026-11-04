@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../../core/services/api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { Role, Permission } from '../../../core/models';
+import { AuthService } from '../../../core/services/auth.service';
 
 @Component({
   selector: 'app-roles',
@@ -14,9 +15,9 @@ import { Role, Permission } from '../../../core/models';
       <div class="flex items-center justify-between mb-lg">
         <div>
           <h1 class="text-3xl font-bold">Gestión de Roles</h1>
-          <p class="text-secondary mt-sm">Crea roles y asigna permisos específicos.</p>
+          <p class="text-secondary mt-sm">{{ auth.isSuperAdmin() ? 'Crea roles y asigna permisos específicos.' : 'Consulta los roles disponibles para tu empresa. Su edición corresponde al superadmin.' }}</p>
         </div>
-        <button class="btn btn-primary" (click)="openModal()">+ Nuevo Rol</button>
+        <button *ngIf="auth.isSuperAdmin()" class="btn btn-primary" (click)="openModal()">+ Nuevo Rol</button>
       </div>
 
       <div class="grid grid-3 gap-md">
@@ -35,7 +36,7 @@ import { Role, Permission } from '../../../core/models';
             </ul>
           </div>
           
-          <div class="flex gap-sm mt-auto pt-md border-t">
+          <div *ngIf="auth.isSuperAdmin()" class="flex gap-sm mt-auto pt-md border-t">
             <button class="btn btn-sm btn-outline flex-1" (click)="openModal(role)">Editar</button>
             <button *ngIf="!role.is_predefined" class="btn btn-sm btn-outline text-danger" (click)="deleteRole(role.id)">Eliminar</button>
           </div>
@@ -98,7 +99,7 @@ export class RolesComponent implements OnInit {
     permission_ids: [] as number[]
   };
 
-  constructor(private api: ApiService, private toast: ToastService) {}
+  constructor(private api: ApiService, private toast: ToastService, public auth: AuthService) {}
 
   ngOnInit() {
     this.loadData();

@@ -8,6 +8,8 @@ import { AuthService } from '../../core/services/auth.service';
 import { ToastService } from '../../core/services/toast.service';
 import { CartService } from '../../core/services/cart.service';
 import { Product } from '../../core/models';
+import { OfflineSyncService } from '../../core/services/offline-sync.service';
+import { NetworkService } from '../../core/services/network.service';
 
 @Component({
   selector: 'app-catalog',
@@ -80,6 +82,9 @@ import { Product } from '../../core/models';
   `]
 })
 export class CatalogComponent implements OnInit {
+  offlineBranches: {id: number; name: string}[] = [];
+  offlineBranchId: number | null = null;
+  savingOffline = false;
   storeName = '';
   selectedStore = '';
   stores: {name: string; slug: string}[] = [];
@@ -97,11 +102,42 @@ export class CatalogComponent implements OnInit {
     public authService: AuthService,
     public cartService: CartService,
     private route: ActivatedRoute,
-    public router: Router
+    public router: Router,
+    private offline: OfflineSyncService,
+    public network: NetworkService
   ) {}
 
   ngOnInit(): void {
     this.route.queryParamMap.subscribe(params => this.loadStore(params.get('store') ?? ''));
+    if (this.authService.currentUser()?.tenant_id) {
+      this.api.getBranches().subscribe({next: branches => {
+        this.offlineBranches = branches;
+        this.offlineBranchId = branches[0]?.id ?? null;
+      }, error: async () => {
+        try { this.offlineBranches = await this.offline.getLocalBranches(); this.offlineBranchId = this.offlineBranches[0]?.id ?? null; } catch {}
+      }});
+    }
+  }
+
+  async downloadOffline() {
+    if (!this.offlineBranchId || this.savingOffline) return;
+    this.savingOffline = true;
+    try {
+      await this.offline.downloadCatalog(Number(this.offlineBranchId));
+      this.toast.success('Catálogo guardado para usar sin conexión en esta cuenta y sucursal.');
+    } catch (e: any) { this.toast.error(e?.error?.detail || e.message); }
+    finally { this.savingOffline = false; }
+  }
+
+  private async loadOffline(version: number) {
+    try {
+      const products = await this.offline.getLocalProducts();
+      if (version !== this.requestVersion) return;
+      this.storeName = this.authService.currentUser()?.tenant_name ?? 'Mi tienda';
+      this.products = this.filteredProducts = products as unknown as Product[];
+      this.toast.info(products.length ? 'Catálogo local: confirma la disponibilidad al sincronizar.' : 'Descarga un catálogo antes de usarlo sin conexión.');
+    } catch { if (version === this.requestVersion) this.toast.error('No hay catálogo local disponible para esta cuenta.'); }
+    finally { if (version === this.requestVersion) this.loading = false; }
   }
 
   changeStore(slug: string): void {
@@ -114,6 +150,7 @@ export class CatalogComponent implements OnInit {
     this.loading = true;
     this.products = this.filteredProducts = this.recommendedProducts = [];
     this.storeName = '';
+    if (this.network.isOffline()) { void this.loadOffline(version); return; }
     this.api.get<{ selected: {name: string; slug: string} | null; stores: {name: string; slug: string}[] }>('/products/storefront', {params: slug ? {store: slug} : {}}).subscribe({
       next: data => {
         if (version !== this.requestVersion) return;
@@ -124,7 +161,7 @@ export class CatalogComponent implements OnInit {
         this.loadProducts(version);
         if (this.authService.currentUser()?.tenant_id) this.loadRecommendedProducts();
       },
-      error: () => { if (version === this.requestVersion) { this.loading = false; this.toast.error('No se pudo cargar la tienda.'); } }
+      error: () => { if (version === this.requestVersion) void this.loadOffline(version); }
     });
   }
 
@@ -151,8 +188,7 @@ export class CatalogComponent implements OnInit {
         this.loading = false;
       },
       error: (err: any) => {
-        this.toast.error('Error al cargar el catálogo');
-        this.loading = false;
+        if (version === this.requestVersion) void this.loadOffline(version);
       }
     });
   }
