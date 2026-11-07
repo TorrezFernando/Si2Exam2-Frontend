@@ -157,7 +157,8 @@ export class ApiService {
   // ─── AI CHAT (Fase 3) ─────────────────────────────────────────────────────
 
   chatWithAI(messages: { role: string; content: string }[]): Observable<{ response: string }> {
-    return this.http.post<{ response: string }>(`${this.base}/ai/chat`, { messages });
+    const store = typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('store') || undefined) : undefined;
+    return this.http.post<{ response: string }>(`${this.base}/ai/chat`, { messages, store });
   }
 
   // ─── INVENTORY (CU-06, CU-07) ─────────────────────────────────────────────
