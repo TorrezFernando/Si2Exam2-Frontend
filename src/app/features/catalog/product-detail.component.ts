@@ -1,3 +1,4 @@
+import { timeout } from 'rxjs';
 import { Component, OnInit, signal, computed, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -83,6 +84,7 @@ import { environment } from '../../../environments/environment';
             <!-- Input oculto para foto -->
             <input #tryOnInput type="file" accept="image/*" capture="user" style="display:none" (change)="onPhotoSelected($event)">
             <!-- Imagen resultado -->
+            <p class="text-secondary text-sm">Talla seleccionada: {{selectedVariant()?.size}} · {{selectedVariant()?.color}}. Visualización orientativa; el ajuste real requiere medidas.</p>
             <div *ngIf="tryOnResultUrl" class="mt-md">
               <img [src]="tryOnResultUrl" alt="Try-On resultado" style="width:100%; border-radius: 12px; max-height: 400px; object-fit: contain;">
               <div class="flex gap-sm mt-sm">
@@ -192,6 +194,7 @@ export class ProductDetailComponent implements OnInit {
   });
 
   // ── Try-On state ──────────────────────────────────────────────────────────
+  private tryOnRequest = 0;
   tryOnState: 'idle' | 'loading' | 'done' | 'error' = 'idle';
   tryOnResultUrl: string | null = null;
   tryOnError = '';
@@ -247,6 +250,7 @@ export class ProductDetailComponent implements OnInit {
   }
 
   selectVariant(variant: ProductVariant) {
+    this.resetTryOn();
     if (variant.id == null) {
       this.selectedVariant.set(variant);
       return;
@@ -337,7 +341,14 @@ export class ProductDetailComponent implements OnInit {
     }
 
     const file = input.files[0];
+    const variant = this.selectedVariant();
+    if (!variant?.id) { this.toast.warning('Selecciona una talla y color antes de probar.'); input.value=''; return; }
+    if (file.size > 10 * 1024 * 1024) { this.toast.error('La foto supera 10 MB.'); input.value=''; return; }
+    const variantId = variant.id;
+    const requestId = ++this.tryOnRequest;
     const formData = new FormData();
+    formData.append('variant_id', String(variantId));
+    input.value = '';
     formData.append('user_photo', file);
     formData.append('product_id', prod.id.toString());
 
@@ -346,21 +357,24 @@ export class ProductDetailComponent implements OnInit {
     this.tryOnError = '';
 
     const apiBase = environment.apiUrl.replace('/api/v1', '');
-    this.http.post<{ result_url: string }>(`${environment.apiUrl}/ai/tryon`, formData).subscribe({
+    this.http.post<{ result_url: string }>(`${environment.apiUrl}/ai/tryon`, formData).pipe(timeout(170000)).subscribe({
       next: (res) => {
+        if (requestId !== this.tryOnRequest || this.selectedVariant()?.id !== variantId) return;
         this.tryOnResultUrl = res.result_url.startsWith('/')
           ? `${apiBase}${res.result_url}`
           : res.result_url;
         this.tryOnState = 'done';
       },
       error: (e) => {
+        if (requestId !== this.tryOnRequest || this.selectedVariant()?.id !== variantId) return;
         this.tryOnState = 'error';
-        this.tryOnError = e?.error?.detail || 'Error al generar el Try-On. Intenta de nuevo.';
+        this.tryOnError = typeof e?.error?.detail === 'string' ? e.error.detail : 'No se pudo completar la imagen. Reintenta con conexión y una foto clara.';
       }
     });
   }
 
   resetTryOn() {
+    ++this.tryOnRequest;
     this.tryOnState = 'idle';
     this.tryOnResultUrl = null;
     this.tryOnError = '';

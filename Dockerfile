@@ -10,7 +10,7 @@ RUN npm run build -- --configuration production
 FROM nginx:alpine
 # Copiar configuración personalizada de Nginx
 ENV PORT=80
-ENV BACKEND_ORIGIN=https://fashionstore-si2-exam.cloud.run
+ENV BACKEND_ORIGIN=https://136.80.138.162.sslip.io
 ENV NGINX_ENVSUBST_FILTER="^(PORT|BACKEND_ORIGIN)$"
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 # Copiar archivos compilados de Angular
