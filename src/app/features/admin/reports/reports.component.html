@@ -3,6 +3,11 @@
   <p>{{returns.count}} comprobantes · Efectivo devuelto: {{returns.refunded | number:'1.2-2'}}</p>
   <p>Por fecha de devolución. Incluye los comprobantes del nuevo flujo; no reconstruye devoluciones históricas sin comprobante.</p>
 </section>
+<section class="card p-lg mb-lg" *ngIf="monthEndReturns as me">
+  <h2>Devoluciones programadas a fin de mes (ajuste mensual)</h2>
+  <p>Pendientes: {{me.pending_count}} · Bs {{me.pending_amount | number:'1.2-2'}} · Liquidadas: {{me.settled_count}} · Bs {{me.settled_amount | number:'1.2-2'}}</p>
+  <p>Se registran cuando no existe el ítem deseado para el cambio; el dinero se devuelve en el ajuste de fin de mes.</p>
+</section>
 <section class="card p-lg mb-lg" *ngIf="settlements as changes">
   <h2>Liquidaciones de cambios en efectivo</h2>
   <p>Cobrado: {{changes.collected | number:'1.2-2'}} · Devuelto: {{changes.refunded | number:'1.2-2'}} · Neto: {{changes.net | number:'1.2-2'}}</p>

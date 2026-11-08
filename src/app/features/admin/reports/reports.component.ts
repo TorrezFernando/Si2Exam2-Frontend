@@ -18,6 +18,7 @@ interface ReportSale {
 
 interface ReportResponse {
   full_returns?: {count:number;refunded:number};
+  month_end_returns?: {count:number;pending_count:number;pending_amount:number;settled_count:number;settled_amount:number};
   exchange_settlements?: {collected:number;refunded:number;net:number;unverified_count:number;count:number};
   total_revenue: number;
   count: number;
@@ -42,6 +43,7 @@ export class ReportsComponent implements OnInit {
 
   sales: ReportSale[] = [];
   fullReturns: ReportResponse['full_returns'] = undefined;
+  monthEndReturns: ReportResponse['month_end_returns'] = undefined;
   settlements: ReportResponse['exchange_settlements'] = undefined;
   totalRevenue: number = 0;
   totalCount: number = 0;
@@ -77,6 +79,7 @@ export class ReportsComponent implements OnInit {
         this.sales = res.data;
         this.settlements = res.exchange_settlements;
         this.fullReturns = res.full_returns;
+        this.monthEndReturns = res.month_end_returns;
         this.totalRevenue = res.total_revenue;
         this.totalCount = res.count;
         this.loading = false;

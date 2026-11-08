@@ -23,8 +23,8 @@ interface PosCartItem {
   standalone: true,
   imports: [FullReturnComponent, CommonModule, FormsModule, RouterLink, GarmentExchangesComponent],
   template: `
-    <app-full-return (changed)="loadProducts(); loadOrders()"></app-full-return>
-      <app-garment-exchanges (changed)="loadProducts(); loadOrders()"></app-garment-exchanges>
+    <app-full-return #fullReturn (changed)="loadProducts(); loadOrders()"></app-full-return>
+      <app-garment-exchanges (changed)="loadProducts(); loadOrders(); fullReturn.loadMonthEnd()"></app-garment-exchanges>
     <div class="content-area" style="max-width: 1200px; margin: 0 auto; padding-top: var(--space-xl);">
       <div class="flex items-center justify-between mb-lg">
         <div>
