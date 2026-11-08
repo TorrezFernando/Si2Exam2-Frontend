@@ -12,8 +12,9 @@ import { Order } from '../../core/models';
     <p *ngIf="order">Orden #{{ order.id }} · Bs {{ order.total_amount | number:'1.2-2' }}</p>
     <p *ngIf="order?.is_paid" class="text-success">Pago confirmado. Tu compra ya está registrada.</p>
     <ng-container *ngIf="order && !order.is_paid">
-      <p>Pago pendiente. Abre Libélula para pagar y después verifica el estado.</p>
-      <button class="btn btn-primary" [disabled]="busy" (click)="pay()">Pagar en Libélula</button>
+      <p>Pago pendiente. Abre {{ provider }} para pagar y después verifica el estado.</p>
+      <p *ngIf="provider === 'PayPal'" class="text-secondary">PayPal cobra el equivalente en dólares (USD). Puedes pagar con tu cuenta PayPal o con tarjeta.</p>
+      <button class="btn btn-primary" [disabled]="busy" (click)="pay()">Pagar en {{ provider }}</button>
       <button class="btn btn-outline" [disabled]="busy" (click)="verify()">Verificar pago</button>
     </ng-container>
     <p role="status">{{ message }}</p>
@@ -27,8 +28,18 @@ export class PaymentComponent implements OnInit {
   busy = false;
   message = '';
   private id = Number(this.route.snapshot.paramMap.get('id'));
+  get provider() { return this.order?.payment_provider === 'PayPal' ? 'PayPal' : 'Libélula'; }
   ngOnInit() {
-    this.api.get<Order>(`/orders/${this.id}`).subscribe({ next: order => this.order = order, error: e => this.fail(e) });
+    const query = this.route.snapshot.queryParamMap;
+    this.api.get<Order>(`/orders/${this.id}`).subscribe({
+      next: order => {
+        this.order = order;
+        if (query.get('cancelled')) this.message = 'Cancelaste el pago. Puedes intentarlo de nuevo.';
+        // PayPal returns here with ?token=...: the server captures and confirms the payment.
+        else if (!order.is_paid && query.get('token')) this.verify();
+      },
+      error: e => this.fail(e)
+    });
   }
   pay() {
     this.busy = true;
@@ -40,7 +51,7 @@ export class PaymentComponent implements OnInit {
   verify() {
     this.busy = true;
     this.api.post<Order>(`/payments/${this.id}/verify`, {}).subscribe({
-      next: order => { this.order = order; this.busy = false; this.message = order.is_paid ? 'Gracias por tu compra.' : 'Libélula aún no confirma el pago.'; },
+      next: order => { this.order = order; this.busy = false; this.message = order.is_paid ? 'Gracias por tu compra.' : `${this.provider} aún no confirma el pago.`; },
       error: e => this.fail(e)
     });
   }

@@ -108,8 +108,8 @@ import { NetworkService } from '../../core/services/network.service';
         </div>
 
         <div *ngIf="paymentMethod !== 'reserva'" class="card mb-lg">
-          <p>El pago se realiza de forma segura en Libélula. Podrás elegir entre los medios habilitados por el comercio.</p>
-          <p class="text-secondary">Importes en bolivianos (BOB). La orden se confirma cuando Libélula informa el pago.</p>
+          <p>El pago se realiza de forma segura en PayPal, con tu cuenta PayPal o con tarjeta. No ingreses datos de tarjeta en esta tienda.</p>
+          <p class="text-secondary">Precios en bolivianos (BOB); PayPal cobra el equivalente en dólares (USD). La orden se confirma cuando el servidor verifica el pago con PayPal.</p>
         </div>
         
         <!-- Formulario Reserva -->
@@ -143,7 +143,7 @@ import { NetworkService } from '../../core/services/network.service';
         </div>
 
         <button class="btn btn-accent w-full mt-lg" style="padding: var(--space-md) 0; margin-top: 1.5rem;" [disabled]="isProcessing || !canPay()" (click)="processPayment()">
-          {{ isProcessing ? 'Procesando...' : paymentMethod === 'reserva' ? 'Reservar prendas' : 'Continuar a Libélula' }}
+          {{ isProcessing ? 'Procesando...' : paymentMethod === 'reserva' ? 'Reservar prendas' : 'Continuar a PayPal' }}
         </button>
       </div>
     </div>
