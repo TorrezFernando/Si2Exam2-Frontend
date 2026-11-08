@@ -94,7 +94,7 @@ import { TenantDetail, SaaSStats, TenantCreateRequest } from '../../../core/mode
                   <th>ID</th>
                   <th>Empresa / Subdominio</th>
                   <th>Plan Activo</th>
-                  <th>Vigencia Mensual</th>
+                  <th>Fin de Suscripción</th>
                   <th>Sucursales</th>
                   <th>Usuarios</th>
                   <th>Estado</th>
@@ -119,17 +119,17 @@ import { TenantDetail, SaaSStats, TenantCreateRequest } from '../../../core/mode
                     <td>
                       <div class="tenant-name-box">
                         @if (t.subscription_status === 'active') {
+                          @if (t.subscription_end_date) {
+                            <strong style="font-size: 0.85rem;">📅 {{ t.subscription_end_date | date:'dd/MM/yyyy' }}</strong>
+                          }
                           <span class="text-xs font-semibold" style="color: #22c55e;">
                             ● Activa
                             @if (t.days_remaining !== null && t.days_remaining !== undefined) {
-                              ({{ t.days_remaining }}d restantes)
+                              ({{ t.days_remaining }} días restantes)
                             }
                           </span>
-                          @if (t.subscription_end_date) {
-                            <span class="tenant-subdomain">Vence: {{ t.subscription_end_date | date:'dd/MM/yyyy' }}</span>
-                          }
                           <span class="text-xs text-muted">
-                            Auto-cancelar fin de mes: <strong>{{ t.cancel_at_period_end !== false ? 'Sí' : 'No' }}</strong>
+                            Auto-cancelar a fin de mes: <strong>{{ t.cancel_at_period_end !== false ? 'Sí' : 'No' }}</strong>
                           </span>
                         } @else {
                           <span class="text-xs font-semibold" style="color: #ef4444;">

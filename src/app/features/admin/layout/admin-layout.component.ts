@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule, RouterLink, RouterLinkActive } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -49,6 +49,11 @@ interface NavItem {
               <div class="badge" [ngClass]="auth.isSuperAdmin() ? 'badge-warning' : 'badge-primary'">
                 {{ auth.isSuperAdmin() ? '👑 Superadmin' : auth.userRoleName() }}
               </div>
+              @if (!auth.isSuperAdmin() && saas.mySubscription()?.end_date) {
+                <div class="text-xs text-muted" style="margin-top: 2px;">
+                  📅 Vence: {{ saas.mySubscription()?.end_date | date:'dd/MM/yy' }}
+                </div>
+              }
             </div>
           </div>
         }
@@ -241,7 +246,7 @@ interface NavItem {
     }
   `]
 })
-export class AdminLayoutComponent {
+export class AdminLayoutComponent implements OnInit {
   sidebarCollapsed = signal(false);
 
   navItems: NavItem[] = [
@@ -362,6 +367,12 @@ export class AdminLayoutComponent {
   ];
 
   constructor(public auth: AuthService, public saas: SaasService) {}
+
+  ngOnInit(): void {
+    if (!this.auth.isSuperAdmin()) {
+      this.saas.getMySubscription().subscribe({ error: () => {} });
+    }
+  }
 
   getItemLabel(item: NavItem): string {
     if (this.auth.isSuperAdmin() && item.superadminLabel) {

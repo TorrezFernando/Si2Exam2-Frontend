@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { ApiService } from '../../../core/services/api.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { SaasService } from '../../../core/services/saas.service';
 import { User, Branch } from '../../../core/models';
 
 interface StatCard {
@@ -22,13 +23,53 @@ interface StatCard {
       <!-- Header -->
       <div class="page-header">
         <div>
-          <h1 class="page-title">Dashboard</h1>
+          <h1 class="page-title">Dashboard de Empresa</h1>
           <p class="text-secondary text-sm">Bienvenido, {{ auth.currentUser()?.full_name || 'Admin' }}</p>
         </div>
         <div class="header-actions">
           <span class="badge badge-success">● Sistema activo</span>
         </div>
       </div>
+
+      <!-- Subscription Expiration Banner -->
+      @if (saas.mySubscription(); as sub) {
+        @if (!sub.is_superadmin) {
+          <div class="sub-banner" [class.sub-cancelled]="sub.status !== 'active'">
+            <div class="sub-banner-info">
+              <div class="sub-banner-title">
+                <span class="badge" [ngClass]="sub.status === 'active' ? 'badge-primary' : 'badge-danger'">
+                  {{ sub.plan?.name || 'Plan Básico' }}
+                </span>
+                @if (sub.status === 'active') {
+                  <span>
+                    📅 Fin de suscripción:
+                    <strong>{{ sub.end_date ? (sub.end_date | date:'dd/MM/yyyy HH:mm') : 'Ciclo mensual activo' }}</strong>
+                  </span>
+                  @if (sub.days_remaining !== null && sub.days_remaining !== undefined) {
+                    <span class="badge" [ngClass]="sub.days_remaining <= 5 ? 'badge-warning' : 'badge-success'">
+                      {{ sub.days_remaining }} día{{ sub.days_remaining === 1 ? '' : 's' }} restante{{ sub.days_remaining === 1 ? '' : 's' }}
+                    </span>
+                  }
+                } @else {
+                  <strong style="color: #ef4444;">
+                    ⚠️ Suscripción cancelada automáticamente por fin de mes
+                    @if (sub.end_date) { ({{ sub.end_date | date:'dd/MM/yyyy' }}) }
+                  </strong>
+                }
+              </div>
+              <div class="text-xs text-muted" style="margin-top: 4px;">
+                Cancelación automática al acabar el mes:
+                <strong>{{ sub.cancel_at_period_end !== false ? 'Activa' : 'Desactivada' }}</strong>
+              </div>
+            </div>
+            @if (auth.userRoleName() === 'admin') {
+              <a routerLink="/admin/plans" class="btn btn-sm btn-outline">
+                Gestionar Suscripción →
+              </a>
+            }
+          </div>
+        }
+      }
 
       <!-- Stat Cards -->
       <div class="stats-grid">
@@ -149,9 +190,34 @@ interface StatCard {
   styles: [`
     .page-header {
       display: flex; justify-content: space-between; align-items: flex-start;
-      margin-bottom: var(--space-xl); padding-top: var(--space-xl);
+      margin-bottom: var(--space-lg); padding-top: var(--space-xl);
     }
     .page-title { font-size: 1.75rem; font-weight: 800; margin-bottom: 4px; }
+
+    .sub-banner {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-left: 4px solid var(--color-primary);
+      border-radius: var(--radius-lg);
+      padding: 14px 18px;
+      margin-bottom: var(--space-xl);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      &.sub-cancelled {
+        border-left-color: #ef4444;
+        background: rgba(239, 68, 68, 0.06);
+      }
+    }
+    .sub-banner-title {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 0.9rem;
+    }
 
     /* Stats */
     .stats-grid {
@@ -214,9 +280,10 @@ export class DashboardComponent implements OnInit {
   recentUsers = signal<User[]>([]);
   stats = signal<StatCard[]>([]);
 
-  constructor(public auth: AuthService, private api: ApiService) {}
+  constructor(public auth: AuthService, private api: ApiService, public saas: SaasService) {}
 
   ngOnInit(): void {
+    this.saas.getMySubscription().subscribe({ error: () => {} });
     this.api.getUsers({ limit: 6 }).subscribe({
       next: (users) => {
         this.recentUsers.set(users);
