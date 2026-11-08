@@ -38,18 +38,6 @@ import { TenantDetail, SaaSStats, TenantCreateRequest } from '../../../core/mode
         </div>
       </div>
 
-      <!-- Superadmin Active Context Indicator -->
-      @if (saas.selectedTenantId(); as activeId) {
-        <div class="context-banner">
-          <div class="context-text">
-            👑 <strong>Modo Inspección Activo:</strong> Estás actuando sobre el contexto de la Empresa ID #{{ activeId }}.
-          </div>
-          <button class="btn btn-sm btn-ghost" (click)="clearTenantContext()">
-            ✕ Salir de contexto (Ver Todo)
-          </button>
-        </div>
-      }
-
       <!-- KPI Summary Cards -->
       @if (stats(); as st) {
         <div class="kpi-grid">
@@ -106,16 +94,16 @@ import { TenantDetail, SaaSStats, TenantCreateRequest } from '../../../core/mode
                   <th>ID</th>
                   <th>Empresa / Subdominio</th>
                   <th>Plan Activo</th>
+                  <th>Vigencia Mensual</th>
                   <th>Sucursales</th>
                   <th>Usuarios</th>
-                  <th>Plazo Cambios</th>
                   <th>Estado</th>
                   <th class="text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 @for (t of tenants(); track t.id) {
-                  <tr [class.highlighted]="saas.selectedTenantId() === t.id">
+                  <tr>
                     <td class="font-mono text-muted">#{{ t.id }}</td>
                     <td>
                       <div class="tenant-name-box">
@@ -124,9 +112,32 @@ import { TenantDetail, SaaSStats, TenantCreateRequest } from '../../../core/mode
                       </div>
                     </td>
                     <td>
-                      <span class="plan-pill" [ngClass]="t.active_plan?.code === 'professional' ? 'pro' : 'basic'">
+                      <span class="plan-pill" [ngClass]="t.active_plan?.has_ai_reports ? 'pro' : 'basic'">
                         {{ t.active_plan?.name || 'Sin Plan' }}
                       </span>
+                    </td>
+                    <td>
+                      <div class="tenant-name-box">
+                        @if (t.subscription_status === 'active') {
+                          <span class="text-xs font-semibold" style="color: #22c55e;">
+                            ● Activa
+                            @if (t.days_remaining !== null && t.days_remaining !== undefined) {
+                              ({{ t.days_remaining }}d restantes)
+                            }
+                          </span>
+                          @if (t.subscription_end_date) {
+                            <span class="tenant-subdomain">Vence: {{ t.subscription_end_date | date:'dd/MM/yyyy' }}</span>
+                          }
+                          <span class="text-xs text-muted">
+                            Auto-cancelar fin de mes: <strong>{{ t.cancel_at_period_end !== false ? 'Sí' : 'No' }}</strong>
+                          </span>
+                        } @else {
+                          <span class="text-xs font-semibold" style="color: #ef4444;">
+                            ⚠️ {{ t.subscription_status === 'cancelled' ? 'Cancelada (Fin de mes)' : (t.subscription_status | uppercase) }}
+                          </span>
+                          <span class="tenant-subdomain">Requiere renovación mensual</span>
+                        }
+                      </div>
                     </td>
                     <td>
                       <span class="font-semibold">{{ t.branches_count }}</span>
@@ -136,30 +147,23 @@ import { TenantDetail, SaaSStats, TenantCreateRequest } from '../../../core/mode
                       <span>👥 {{ t.users_count }}</span>
                     </td>
                     <td>
-                      <span>🔄 {{ t.exchange_window_days }} días</span>
-                    </td>
-                    <td>
                       <span class="status-badge" [class.active]="t.is_active" [class.inactive]="!t.is_active">
                         {{ t.is_active ? 'Activa' : 'Inactiva' }}
                       </span>
                     </td>
                     <td class="text-right">
                       <div class="action-buttons">
-                        <!-- Inspeccionar contexto -->
-                        <button class="btn btn-sm" [ngClass]="saas.selectedTenantId() === t.id ? 'btn-primary' : 'btn-ghost'"
-                          (click)="toggleContext(t.id)"
-                          [title]="saas.selectedTenantId() === t.id ? 'Dejar de inspeccionar' : 'Inspeccionar catálogo/sucursales de esta empresa'">
-                          {{ saas.selectedTenantId() === t.id ? '👁️ Inspeccionando' : '👁️ Contexto' }}
+                        <!-- Renovar ciclo mensual (+30 días) -->
+                        <button class="btn btn-sm"
+                          [ngClass]="t.subscription_status !== 'active' ? 'btn-primary' : 'btn-ghost'"
+                          (click)="renewTenant(t)"
+                          title="Renovar o extender suscripción mensual por 30 días">
+                          🔄 {{ t.subscription_status !== 'active' ? 'Reactivar +30d' : '+30d' }}
                         </button>
 
-                        <!-- Cambiar Plan rápido -->
-                        <button class="btn btn-sm btn-outline" (click)="togglePlan(t)" title="Cambiar Plan de Suscripción">
-                          🔄 Cambiar Plan
-                        </button>
-
-                        <!-- Editar Empresa -->
-                        <button class="btn btn-sm btn-secondary" (click)="openEditModal(t)" title="Editar Datos de Empresa">
-                          ✏️ Editar
+                        <!-- Editar Empresa y Plan -->
+                        <button class="btn btn-sm btn-secondary" (click)="openEditModal(t)" title="Editar Empresa, Plan y Auto-cancelación">
+                          ✏️ Gestionar
                         </button>
                       </div>
                     </td>
@@ -276,6 +280,13 @@ import { TenantDetail, SaaSStats, TenantCreateRequest } from '../../../core/mode
                     <option [value]="plan.code">{{ plan.name }} (USD {{ plan.price }}/mes - Hasta {{ plan.max_branches }} sucursales)</option>
                   }
                 </select>
+              </div>
+
+              <div class="form-group checkbox-group">
+                <label class="checkbox-label">
+                  <input type="checkbox" [(ngModel)]="editCancelAtPeriodEnd" name="editCancelAtPeriodEnd" />
+                  <span>Cancelar suscripción automáticamente al acabar el mes (ciclo de 30 días)</span>
+                </label>
               </div>
 
               <div class="form-group checkbox-group">
@@ -634,6 +645,7 @@ export class TenantsManagementComponent implements OnInit {
   editWindow = 2;
   editIsActive = true;
   editPlanCode = 'basic';
+  editCancelAtPeriodEnd = true;
 
   constructor(
     public saas: SaasService,
@@ -642,6 +654,8 @@ export class TenantsManagementComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
+    localStorage.removeItem('fs_selected_tenant_id');
+    this.saas.selectedTenantId.set(null);
     this.saas.getPlans().subscribe({error: () => this.toast.error('No se pudieron cargar los planes')});
     this.loadAll();
   }
@@ -665,19 +679,16 @@ export class TenantsManagementComponent implements OnInit {
     });
   }
 
-  // ─── Superadmin Context Switcher ───────────────────────────────────────────
-  toggleContext(tenantId: number): void {
-    if (this.saas.selectedTenantId() === tenantId) {
-      this.clearTenantContext();
-    } else {
-      this.saas.setTenantContext(tenantId);
-      this.toast.info(`Contexto cambiado a Empresa #${tenantId}. Ahora visualizarás sus sucursales y catálogo.`);
-    }
-  }
-
-  clearTenantContext(): void {
-    this.saas.setTenantContext(null);
-    this.toast.info('Contexto restaurado a modo Superadmin Global.');
+  renewTenant(tenant: TenantDetail): void {
+    this.saas.renewTenantSubscription(tenant.id).subscribe({
+      next: () => {
+        this.toast.success(`Suscripción de "${tenant.name}" renovada por 30 días.`);
+        this.loadAll();
+      },
+      error: (err) => {
+        this.toast.error(err.error?.detail || 'No se pudo renovar la suscripción');
+      }
+    });
   }
 
   // ─── Quick Plan Toggle ─────────────────────────────────────────────────────
@@ -734,6 +745,7 @@ export class TenantsManagementComponent implements OnInit {
     this.editWindow = tenant.exchange_window_days;
     this.editIsActive = tenant.is_active;
     this.editPlanCode = tenant.active_plan?.code || 'basic';
+    this.editCancelAtPeriodEnd = tenant.cancel_at_period_end !== false;
     this.showEditModal.set(true);
   }
 
@@ -748,6 +760,30 @@ export class TenantsManagementComponent implements OnInit {
     this.submitting.set(true);
     const tenantId = this.selectedTenantForEdit.id;
     const currentPlanCode = this.selectedTenantForEdit.active_plan?.code || 'basic';
+    const currentAutoCancel = this.selectedTenantForEdit.cancel_at_period_end !== false;
+
+    const finalizeAutoCancel = () => {
+      if (this.editCancelAtPeriodEnd !== currentAutoCancel || this.editPlanCode !== currentPlanCode) {
+        this.saas.setTenantAutoCancel(tenantId, this.editCancelAtPeriodEnd).subscribe({
+          next: () => {
+            this.submitting.set(false);
+            this.toast.success('¡Empresa y suscripción actualizadas con éxito!');
+            this.closeEditModal();
+            this.loadAll();
+          },
+          error: () => {
+            this.submitting.set(false);
+            this.closeEditModal();
+            this.loadAll();
+          }
+        });
+      } else {
+        this.submitting.set(false);
+        this.toast.success('¡Empresa actualizada correctamente!');
+        this.closeEditModal();
+        this.loadAll();
+      }
+    };
 
     this.saas.updateTenant(tenantId, {
       name: this.editName,
@@ -756,15 +792,9 @@ export class TenantsManagementComponent implements OnInit {
       is_active: this.editIsActive,
     }).subscribe({
       next: () => {
-        // Si el plan fue modificado en el modal, aplicar el cambio de plan
         if (this.editPlanCode !== currentPlanCode) {
           this.saas.changeTenantPlan(tenantId, this.editPlanCode).subscribe({
-            next: () => {
-              this.submitting.set(false);
-              this.toast.success('¡Empresa y plan de suscripción actualizados con éxito!');
-              this.closeEditModal();
-              this.loadAll();
-            },
+            next: () => finalizeAutoCancel(),
             error: (pErr) => {
               this.submitting.set(false);
               const pDetail = pErr.error?.detail || 'No se pudo cambiar el plan';
@@ -773,10 +803,7 @@ export class TenantsManagementComponent implements OnInit {
             }
           });
         } else {
-          this.submitting.set(false);
-          this.toast.success('¡Empresa actualizada correctamente!');
-          this.closeEditModal();
-          this.loadAll();
+          finalizeAutoCancel();
         }
       },
       error: (err) => {

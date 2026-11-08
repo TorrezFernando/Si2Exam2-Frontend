@@ -20,6 +20,22 @@
         </ng-container>
         <ng-container *ngIf="authService.isLoggedIn()">
           <button
+            *ngIf="authService.isSuperAdmin()"
+            class="btn btn-primary"
+            (click)="router.navigate(['/admin/tenants'])"
+            title="Volver al Panel Global SaaS"
+          >
+            👑 Panel SaaS
+          </button>
+          <button
+            *ngIf="!authService.isSuperAdmin() && (authService.userRoleName() === 'admin' || authService.userRoleName() === 'administrador' || authService.userRoleName() === 'encargado')"
+            class="btn btn-outline"
+            (click)="router.navigate(['/admin/dashboard'])"
+            title="Ir al Panel de Empresa"
+          >
+            ⚙️ Panel Empresa
+          </button>
+          <button
             *ngIf="authService.userRoleName() === 'cajero'"
             class="btn btn-outline"
             (click)="goToCashier()"
@@ -27,19 +43,21 @@
           >
             🧾 Menú cajero
           </button>
-          <button class="btn btn-outline" (click)="router.navigate(['/profile'])" title="Mi perfil y reservas">
-            👤 Perfil
-          </button>
-          <button class="btn btn-outline" (click)="goToReservations()" title="Mis Reservas">
-            📅 Reservas
-          </button>
-          <button class="btn btn-outline" (click)="router.navigate(['/catalog/purchases'])" title="Mis Compras y Facturas">
-            🛍️ Mis Compras
-          </button>
+          <ng-container *ngIf="!authService.isSuperAdmin()">
+            <button class="btn btn-outline" (click)="router.navigate(['/profile'])" title="Mi perfil y reservas">
+              👤 Perfil
+            </button>
+            <button class="btn btn-outline" (click)="goToReservations()" title="Mis Reservas">
+              📅 Reservas
+            </button>
+            <button class="btn btn-outline" (click)="router.navigate(['/catalog/purchases'])" title="Mis Compras y Facturas">
+              🛍️ Mis Compras
+            </button>
+          </ng-container>
           <button class="btn btn-outline text-danger" (click)="authService.logout()">Cerrar Sesión</button>
         </ng-container>
 
-        <button class="btn btn-primary relative cart-button-anim" (click)="router.navigate(['/cart'])">
+        <button *ngIf="!authService.isSuperAdmin()" class="btn btn-primary relative cart-button-anim" (click)="router.navigate(['/cart'])">
           🛒 Carrito
           <span *ngIf="cartService.totalItemsCount() > 0" class="badge badge-accent" style="position: absolute; top: -8px; right: -8px; padding: 0.2rem 0.5rem; font-size: 0.75rem; border-radius: 50%;">
             {{ cartService.totalItemsCount() }}

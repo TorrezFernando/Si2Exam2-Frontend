@@ -28,12 +28,17 @@ import { AuditLog } from '../../../core/models';
               <option value="UPDATE">UPDATE</option>
               <option value="DELETE">DELETE</option>
               <option value="LOGIN">LOGIN</option>
+              <option value="AUTO_CANCEL">AUTO_CANCEL</option>
+              <option value="RENEW">RENEW</option>
+              <option value="EXPIRE">EXPIRE</option>
             </select>
           </div>
           <div class="flex-1">
             <label class="form-label text-sm">Filtrar por Entidad</label>
             <select class="form-control" [(ngModel)]="filters.entity_type" (change)="loadData()">
               <option value="">Todas</option>
+              <option value="TENANT">TENANT</option>
+              <option value="SUBSCRIPTION">SUBSCRIPTION</option>
               <option value="USER">USER</option>
               <option value="ROLE">ROLE</option>
               <option value="USER_PERMISSION">USER_PERMISSION</option>
@@ -64,9 +69,9 @@ import { AuditLog } from '../../../core/models';
                 <td>{{ log.user_id || 'Sistema' }}</td>
                 <td>
                   <span class="badge" 
-                        [class.badge-success]="log.action === 'CREATE' || log.action === 'LOGIN'"
+                        [class.badge-success]="log.action === 'CREATE' || log.action === 'LOGIN' || log.action === 'RENEW'"
                         [class.badge-primary]="log.action === 'UPDATE'"
-                        [class.badge-danger]="log.action === 'DELETE'">
+                        [class.badge-danger]="log.action === 'DELETE' || log.action === 'AUTO_CANCEL' || log.action === 'EXPIRE'">
                     {{ log.action }}
                   </span>
                 </td>

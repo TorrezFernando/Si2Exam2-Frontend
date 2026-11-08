@@ -65,6 +65,35 @@ export class SaasService {
     );
   }
 
+  setMyAutoCancel(cancelAtPeriodEnd: boolean): Observable<MySubscriptionResponse> {
+    this.isLoading.set(true);
+    return this.http.patch<MySubscriptionResponse>(
+      `${this.baseUrl}/my-subscription/auto-cancel`,
+      { cancel_at_period_end: cancelAtPeriodEnd }
+    ).pipe(
+      tap({
+        next: (res) => {
+          this.mySubscription.set(res);
+          this.isLoading.set(false);
+        },
+        error: () => this.isLoading.set(false),
+      })
+    );
+  }
+
+  renewMySubscription(): Observable<TenantDetail> {
+    this.isLoading.set(true);
+    return this.http.post<TenantDetail>(`${this.baseUrl}/my-subscription/renew`, {}).pipe(
+      tap({
+        next: () => {
+          this.getMySubscription().subscribe();
+          this.isLoading.set(false);
+        },
+        error: () => this.isLoading.set(false),
+      })
+    );
+  }
+
   // ─── Gestión de Empresas (Superadmin) ─────────────────────────────────────
   getTenants(): Observable<TenantDetail[]> {
     this.isLoading.set(true);
@@ -103,6 +132,29 @@ export class SaasService {
   changeTenantPlan(tenantId: number, planCode: string): Observable<TenantDetail> {
     this.isLoading.set(true);
     return this.http.post<TenantDetail>(`${this.baseUrl}/tenants/${tenantId}/change-plan`, { plan_code: planCode }).pipe(
+      tap({
+        next: () => this.isLoading.set(false),
+        error: () => this.isLoading.set(false),
+      })
+    );
+  }
+
+  setTenantAutoCancel(tenantId: number, cancelAtPeriodEnd: boolean): Observable<TenantDetail> {
+    this.isLoading.set(true);
+    return this.http.patch<TenantDetail>(
+      `${this.baseUrl}/tenants/${tenantId}/auto-cancel`,
+      { cancel_at_period_end: cancelAtPeriodEnd }
+    ).pipe(
+      tap({
+        next: () => this.isLoading.set(false),
+        error: () => this.isLoading.set(false),
+      })
+    );
+  }
+
+  renewTenantSubscription(tenantId: number): Observable<TenantDetail> {
+    this.isLoading.set(true);
+    return this.http.post<TenantDetail>(`${this.baseUrl}/tenants/${tenantId}/renew`, {}).pipe(
       tap({
         next: () => this.isLoading.set(false),
         error: () => this.isLoading.set(false),

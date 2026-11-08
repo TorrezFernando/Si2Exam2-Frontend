@@ -8,8 +8,10 @@ import { ToastContainerComponent } from '../../../shared/components/toast-contai
 
 interface NavItem {
   label: string;
+  superadminLabel?: string;
   icon: string;
   route: string;
+  scope: 'superadmin' | 'company' | 'both';
   permissions?: string[];
 }
 
@@ -58,24 +60,26 @@ interface NavItem {
               [routerLink]="item.route"
               routerLinkActive="active"
               class="nav-item"
-              [title]="sidebarCollapsed() ? item.label : ''"
+              [title]="sidebarCollapsed() ? getItemLabel(item) : ''"
             >
               <span class="nav-icon" [innerHTML]="item.icon"></span>
               @if (!sidebarCollapsed()) {
-                <span class="nav-label">{{ item.label }}</span>
+                <span class="nav-label">{{ getItemLabel(item) }}</span>
               }
             </a>
           </ng-container>
         </nav>
 
         <div class="sidebar-actions">
-          <button class="sidebar-link" [routerLink]="['/profile']">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-              <path d="M20 21a8 8 0 0 0-16 0"/>
-              <circle cx="12" cy="7" r="4"/>
-            </svg>
-            @if (!sidebarCollapsed()) { <span>Mi perfil</span> }
-          </button>
+          @if (!auth.isSuperAdmin()) {
+            <button class="sidebar-link" [routerLink]="['/profile']">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                <path d="M20 21a8 8 0 0 0-16 0"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+              @if (!sidebarCollapsed()) { <span>Mi perfil</span> }
+            </button>
+          }
           <button class="sidebar-logout" (click)="auth.logout()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -241,10 +245,20 @@ export class AdminLayoutComponent {
   sidebarCollapsed = signal(false);
 
   navItems: NavItem[] = [
-    {label: "Gestión comercial", icon: "📦", route: "/admin/operations", permissions: ["catalog:write", "inventory:write", "inventory:read"]},
+    {
+      label: 'Empresas SaaS',
+      route: '/admin/tenants',
+      scope: 'superadmin',
+      permissions: ['saas:manage'],
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+        <path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16M9 9h1M9 13h1M9 17h1M14 9h1M14 13h1M14 17h1"/>
+      </svg>`
+    },
+    {label: "Gestión comercial", icon: "📦", route: "/admin/operations", scope: "company", permissions: ["catalog:write", "inventory:write", "inventory:read"]},
     {
       label: 'Dashboard',
       route: '/admin/dashboard',
+      scope: 'company',
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
         <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
         <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
@@ -253,6 +267,7 @@ export class AdminLayoutComponent {
     {
       label: 'Usuarios',
       route: '/admin/users',
+      scope: 'company',
       permissions: ['users:read'],
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -262,16 +277,9 @@ export class AdminLayoutComponent {
       </svg>`
     },
     {
-      label: 'Roles',
-      route: '/admin/roles',
-      permissions: ['roles:manage'],
-      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-      </svg>`
-    },
-    {
       label: 'Sucursales',
       route: '/admin/branches',
+      scope: 'company',
       permissions: ['branches:read'],
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
         <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
@@ -281,6 +289,7 @@ export class AdminLayoutComponent {
     {
       label: 'Productos',
       route: '/admin/products',
+      scope: 'company',
       permissions: ['catalog:read'],
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
         <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
@@ -291,6 +300,7 @@ export class AdminLayoutComponent {
     {
       label: 'Reservas',
       route: '/admin/reservations',
+      scope: 'company',
       permissions: ['reservations:read'],
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
         <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
@@ -302,14 +312,36 @@ export class AdminLayoutComponent {
     {
       label: 'Reportes y analítica',
       route: '/admin/reports',
+      scope: 'company',
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
         <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>
         <path d="M22 12A10 10 0 0 0 12 2v10z"/>
       </svg>`
     },
     {
+      label: 'Planes & Suscripción',
+      superadminLabel: 'Catálogo de Planes SaaS',
+      route: '/admin/plans',
+      scope: 'both',
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      </svg>`
+    },
+    {
+      label: 'Roles',
+      superadminLabel: 'Roles Globales',
+      route: '/admin/roles',
+      scope: 'both',
+      permissions: ['roles:manage'],
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>`
+    },
+    {
       label: 'Bitácora',
+      superadminLabel: 'Bitácora SaaS',
       route: '/admin/audit',
+      scope: 'both',
       permissions: ['audit:read'],
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -320,23 +352,9 @@ export class AdminLayoutComponent {
       </svg>`
     },
     {
-      label: 'Planes & Suscripción',
-      route: '/admin/plans',
-      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-      </svg>`
-    },
-    {
-      label: 'Empresas SaaS',
-      route: '/admin/tenants',
-      permissions: ['saas:manage'],
-      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-        <path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16M9 9h1M9 13h1M9 17h1M14 9h1M14 13h1M14 17h1"/>
-      </svg>`
-    },
-    {
       label: 'Sync Offline',
       route: '/admin/sync-inbox',
+      scope: 'company',
       icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
         <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
       </svg>`
@@ -345,17 +363,25 @@ export class AdminLayoutComponent {
 
   constructor(public auth: AuthService, public saas: SaasService) {}
 
+  getItemLabel(item: NavItem): string {
+    if (this.auth.isSuperAdmin() && item.superadminLabel) {
+      return item.superadminLabel;
+    }
+    return item.label;
+  }
+
   canShowItem(item: NavItem): boolean {
     if (this.auth.isSuperAdmin()) {
-      return true;
+      // El SuperAdmin global solo administra la plataforma SaaS, nunca módulos internos de una empresa
+      return item.scope === 'superadmin' || item.scope === 'both';
     }
-    if (item.route === '/admin/tenants') {
+    if (item.scope === 'superadmin') {
       return false; // Solo accesible para superadmin
     }
     if (item.route === '/admin/plans') {
       // Visible para administradores de empresas
       const role = this.auth.userRoleName()?.toLowerCase() || '';
-      return role === 'admin' || role === 'superadmin';
+      return role === 'admin';
     }
     if (item.route === '/admin/reports') {
       return ['sales:read', 'inventory:read', 'inventory:write'].some(p => this.auth.hasPermission(p));

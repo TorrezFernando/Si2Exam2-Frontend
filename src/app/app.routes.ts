@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { authGuard, publicGuard, permissionGuard } from './core/guards/auth.guard';
+import { authGuard, publicGuard, permissionGuard, companyOnlyGuard } from './core/guards/auth.guard';
 
 export const routes: Routes = [
   // ─── Redirect raíz ──────────────────────────────────────────────────
@@ -24,7 +24,7 @@ export const routes: Routes = [
   // ─── Panel Cajero ─────────────────────────────────────────────────────
   {
     path: 'cashier',
-    canActivate: [permissionGuard('sales:write')],
+    canActivate: [companyOnlyGuard, permissionGuard('sales:write')],
     loadChildren: () =>
       import('./features/cashier/cashier.routes').then(m => m.cashierRoutes)
   },
@@ -39,23 +39,23 @@ export const routes: Routes = [
   // ─── Perfil del usuario con sus reservas ──────────────────────────────
   {
     path: 'profile',
-    canActivate: [authGuard],
+    canActivate: [authGuard, companyOnlyGuard],
     loadComponent: () => import('./features/catalog/my-reservations.component').then(m => m.MyReservationsComponent)
   },
 
   // ─── Carrito ───────────────────────────────────────────────────────────
   {
     path: 'cart',
-    canActivate: [authGuard],
+    canActivate: [authGuard, companyOnlyGuard],
     loadChildren: () =>
       import('./features/cart/cart.routes').then(m => m.cartRoutes)
   },
 
-  { path: 'payment/:id', canActivate: [authGuard], loadComponent: () => import('./features/cart/payment.component').then(m => m.PaymentComponent) },
+  { path: 'payment/:id', canActivate: [authGuard, companyOnlyGuard], loadComponent: () => import('./features/cart/payment.component').then(m => m.PaymentComponent) },
 
   {
     path: 'sync-inbox',
-    canActivate: [authGuard],
+    canActivate: [authGuard, companyOnlyGuard],
     loadComponent: () => import('./features/admin/sync-inbox/sync-inbox.component').then(m => m.SyncInboxComponent)
   },
 

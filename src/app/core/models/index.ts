@@ -257,6 +257,9 @@ export interface Tenant {
 export interface TenantDetail extends Tenant {
   active_plan?: SubscriptionPlan | null;
   subscription_status: string;
+  subscription_end_date?: string | null;
+  cancel_at_period_end?: boolean;
+  days_remaining?: number | null;
   branches_count: number;
   users_count: number;
   orders_count: number;
@@ -294,6 +297,10 @@ export interface MySubscriptionResponse {
   plan?: SubscriptionPlan | null;
   status: string;
   start_date?: string | null;
+  end_date?: string | null;
+  cancel_at_period_end?: boolean;
+  cancelled_at?: string | null;
+  days_remaining?: number | null;
   usage?: SubscriptionUsage | null;
 }
 
