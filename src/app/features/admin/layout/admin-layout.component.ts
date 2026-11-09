@@ -324,6 +324,24 @@ export class AdminLayoutComponent implements OnInit {
       </svg>`
     },
     {
+      label: 'Constructor de reportes',
+      route: '/admin/report-builder',
+      scope: 'company',
+      permissions: ['sales:read', 'inventory:read', 'inventory:write', 'catalog:read', 'catalog:write', 'users:read', 'reservations:read'],
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+        <path d="M3 3h18v4H3zM3 10h8v11H3zM14 10h7v5h-7zM14 18h7v3h-7z"/>
+      </svg>`
+    },
+    {
+      label: 'Backup / Restore',
+      route: '/admin/backups',
+      scope: 'superadmin',
+      permissions: ['saas:manage'],
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+        <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>
+      </svg>`
+    },
+    {
       label: 'Planes & Suscripción',
       superadminLabel: 'Catálogo de Planes SaaS',
       route: '/admin/plans',

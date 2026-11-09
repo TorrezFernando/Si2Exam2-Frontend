@@ -48,6 +48,16 @@ export const adminRoutes: Routes = [
         loadComponent: () => import('./reports/reports.component').then(m => m.ReportsComponent)
       },
       {
+        path: 'report-builder',
+        canActivate: [companyOnlyGuard],
+        loadComponent: () => import('./report-builder/report-builder.component').then(m => m.ReportBuilderComponent)
+      },
+      {
+        path: 'backups',
+        canActivate: [superAdminGuard],
+        loadComponent: () => import('./backups/backups.component').then(m => m.BackupsComponent)
+      },
+      {
         path: 'audit',
         loadComponent: () => import('./audit/audit.component').then(m => m.AuditComponent)
       },

@@ -80,10 +80,13 @@ export interface PasswordChange {
 export interface AuditLog {
   id: number;
   user_id?: number;
+  user_email?: string | null;
   action: string;
   entity_type: string;
   entity_id?: string;
   details?: any;
+  ip?: string | null;
+  user_agent?: string | null;
   created_at: string;
 }
 

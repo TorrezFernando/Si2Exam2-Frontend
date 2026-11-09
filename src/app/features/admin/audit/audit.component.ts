@@ -14,7 +14,7 @@ import { AuditLog } from '../../../core/models';
       <div class="flex items-center justify-between mb-lg">
         <div>
           <h1 class="text-3xl font-bold">Bitácora de Modificaciones</h1>
-          <p class="text-secondary mt-sm">Registro de actividades y cambios (Solo lectura).</p>
+          <p class="text-secondary mt-sm">Todas las acciones de los usuarios con IP, usuario, fecha y hora. Se guardan cifradas con la llave del desarrollador: nadie puede leerlas desde la base de datos, solo desde esta pantalla (solo lectura).</p>
         </div>
       </div>
 
@@ -56,7 +56,8 @@ import { AuditLog } from '../../../core/models';
             <thead>
               <tr>
                 <th>Fecha</th>
-                <th>Usuario ID</th>
+                <th>Usuario</th>
+                <th>IP</th>
                 <th>Acción</th>
                 <th>Entidad</th>
                 <th>Entidad ID</th>
@@ -66,7 +67,8 @@ import { AuditLog } from '../../../core/models';
             <tbody>
               <tr *ngFor="let log of logs">
                 <td class="text-secondary" style="white-space: nowrap;">{{ log.created_at | date:'short' }}</td>
-                <td>{{ log.user_id || 'Sistema' }}</td>
+                <td>{{ log.user_email || (log.user_id ? 'ID ' + log.user_id : 'Sistema') }}</td>
+                <td class="text-sm" [title]="log.user_agent || ''">{{ log.ip || '—' }}</td>
                 <td>
                   <span class="badge" 
                         [class.badge-success]="log.action === 'CREATE' || log.action === 'LOGIN' || log.action === 'RENEW'"
@@ -82,7 +84,7 @@ import { AuditLog } from '../../../core/models';
                 </td>
               </tr>
               <tr *ngIf="logs.length === 0">
-                <td colspan="6" class="text-center py-xl text-secondary">No hay registros que coincidan con los filtros.</td>
+                <td colspan="7" class="text-center py-xl text-secondary">No hay registros que coincidan con los filtros.</td>
               </tr>
             </tbody>
           </table>
