@@ -37,7 +37,7 @@ import { NetworkService } from '../../core/services/network.service';
         <!-- Lista de Productos -->
         <div class="card flex-col gap-md">
           <h2 class="font-bold text-lg mb-sm border-b pb-sm">Productos Seleccionados</h2>
-          
+
           <div *ngFor="let item of cartItems(); let i = index" class="flex justify-between items-center border-b pb-sm">
             <div class="flex items-center gap-md">
               <div style="width: 60px; height: 60px; background: var(--bg-hover); border-radius: var(--radius-sm); overflow: hidden;">
@@ -50,7 +50,7 @@ import { NetworkService } from '../../core/services/network.service';
                 </p>
               </div>
             </div>
-            
+
             <div class="flex items-center gap-lg">
               <div class="font-semibold text-lg">Bs {{ item.unit_price.toFixed(2) }}</div>
               <div class="flex items-center gap-sm">
@@ -66,7 +66,7 @@ import { NetworkService } from '../../core/services/network.service';
         <!-- Resumen de Compra -->
         <div class="card card-glass" style="height: fit-content; position: sticky; top: var(--space-xl);">
           <h2 class="font-bold text-lg mb-md">Resumen de Compra</h2>
-          
+
           <div class="flex justify-between mb-sm">
             <span class="text-secondary">Subtotal</span>
             <span>Bs {{ cartTotal().toFixed(2) }}</span>
@@ -75,7 +75,7 @@ import { NetworkService } from '../../core/services/network.service';
             <span class="text-secondary">Envío</span>
             <span class="text-success">Gratis</span>
           </div>
-          
+
           <div class="border-t mt-md pt-md flex justify-between items-center mb-lg">
             <span class="font-bold text-lg">Total</span>
             <span class="font-bold text-2xl text-primary">Bs {{ cartTotal().toFixed(2) }}</span>
@@ -93,7 +93,7 @@ import { NetworkService } from '../../core/services/network.service';
       <div class="card" style="width: 100%; max-width: 700px; padding: var(--space-2xl); position: relative;">
         <!-- Botón cerrar modal -->
         <button class="btn btn-sm btn-outline" style="position: absolute; top: var(--space-md); right: var(--space-md);" (click)="showPaymentModal = false">✕</button>
-        
+
         <h2 class="font-bold text-3xl mb-xs text-center">Finalizar Compra</h2>
         <p class="text-secondary text-center mb-xl">Total a pagar: <strong class="text-primary text-xl">Bs {{ cartTotal().toFixed(2) }}</strong></p>
 
@@ -111,7 +111,7 @@ import { NetworkService } from '../../core/services/network.service';
           <p>El pago se realiza de forma segura en PayPal, con tu cuenta PayPal o con tarjeta. No ingreses datos de tarjeta en esta tienda.</p>
           <p class="text-secondary">Precios en bolivianos (BOB); PayPal cobra el equivalente en dólares (USD). La orden se confirma cuando el servidor verifica el pago con PayPal.</p>
         </div>
-        
+
         <!-- Formulario Reserva -->
         <div *ngIf="paymentMethod === 'reserva'" class="flex-col gap-md mb-xl animate-fade-in text-left p-md border rounded" style="background: rgba(108, 99, 255, 0.05); border-color: rgba(108, 99, 255, 0.2);">
           <div class="flex items-center gap-sm mb-sm">
@@ -121,14 +121,14 @@ import { NetworkService } from '../../core/services/network.service';
               <p class="text-secondary text-sm" style="margin: 0;">Tus productos serán separados para pagar y recoger.</p>
             </div>
           </div>
-          
+
           <div>
             <label class="form-label mb-xs block">Sucursal de Retiro</label>
             <select class="form-control p-sm w-full" [(ngModel)]="reservaBranchId">
               <option *ngFor="let b of branches" [value]="b.id">{{ b.name }}</option>
             </select>
           </div>
-          
+
           <div class="grid grid-2 gap-md">
             <div>
               <label class="form-label mb-xs block">Día de Retiro (Máx 2 días)</label>
@@ -158,7 +158,7 @@ export class CartComponent implements OnInit {
   paymentMethod: 'tarjeta' | 'qr' | 'reserva' = 'tarjeta';
   isProcessing = false;
   private requestKey = crypto.randomUUID();
-  
+
   branches: Branch[] = [];
   reservaBranchId: number | null = null;
   reservaDate: string = '';
@@ -191,11 +191,11 @@ export class CartComponent implements OnInit {
           this.reservaBranchId = this.branches[0]?.id ?? null;
         } catch { this.branches = []; }
       }});
-    
+
     const today = new Date();
     this.minDate = today.toISOString().split('T')[0];
     this.reservaDate = this.minDate;
-    
+
     const max = new Date();
     max.setDate(max.getDate() + 2);
     this.maxDate = max.toISOString().split('T')[0];
@@ -235,10 +235,14 @@ export class CartComponent implements OnInit {
         if (!user) throw new Error('Inicia sesión para reservar.');
         const pickupDate = new Date(`${this.reservaDate}T${this.reservaTime}`);
         if (pickupDate.getTime() <= Date.now()) throw new Error('Selecciona una fecha y hora futuras.');
-        if (this.network.isOnline()) await this.offline.downloadCatalog(Number(this.reservaBranchId));
-        await this.offline.recordOfflineReservation({branchId: Number(this.reservaBranchId), userId: user.id,
-          items, pickupDate: pickupDate.toISOString()});
-        this.handleSuccess('Reserva guardada en este dispositivo. Su confirmación depende de la sincronización y del stock disponible.');
+        const attemptId = this.reservationAttemptId(user.id, items, pickupDate.toISOString());
+        if (this.network.isOnline()) await this.offline.downloadCatalog(Number(this.reservaBranchId)).catch(() => undefined);
+        const { duplicate } = await this.offline.recordOfflineReservation({branchId: Number(this.reservaBranchId), userId: user.id,
+          items, pickupDate: pickupDate.toISOString(), clientOperationUuid: attemptId});
+        this.clearReservationAttempt(user.id);
+        this.handleSuccess(duplicate
+          ? 'Esta reserva ya estaba registrada; no se duplicó. Se enviará a la tienda cuando haya conexión.'
+          : 'Reserva guardada en este dispositivo. Su confirmación depende de la sincronización y del stock disponible.');
       } catch (err: any) {
         this.toast.error(err?.error?.detail || err?.message || 'No se pudo guardar la reserva.');
         this.isProcessing = false;
@@ -255,6 +259,27 @@ export class CartComponent implements OnInit {
         error: err => this.handleError(err)
       });
     }
+  }
+
+  /**
+   * Id estable del intento de reserva (mismo cliente, sucursal, fecha y carrito). Se conserva tras un
+   * error o una recarga, así que repetir "Reservar" reutiliza el mismo id y la reserva se guarda una sola vez.
+   */
+  private reservationAttemptId(userId: number, items: {variant_id: number; quantity: number}[], pickup: string): string {
+    const key = `fs_reservation_attempt_u${userId}`;
+    const signature = JSON.stringify({ branch: Number(this.reservaBranchId), pickup,
+      items: [...items].sort((a, b) => a.variant_id - b.variant_id) });
+    try {
+      const saved = JSON.parse(localStorage.getItem(key) || 'null');
+      if (saved?.signature === signature && typeof saved.id === 'string') return saved.id;
+    } catch { /* intento anterior ilegible: se crea uno nuevo */ }
+    const id = crypto.randomUUID();
+    try { localStorage.setItem(key, JSON.stringify({ id, signature })); } catch { /* almacenamiento lleno o bloqueado */ }
+    return id;
+  }
+
+  private clearReservationAttempt(userId: number) {
+    try { localStorage.removeItem(`fs_reservation_attempt_u${userId}`); } catch { /* sin almacenamiento */ }
   }
 
   private handleSuccess(msg: string) {

@@ -48,7 +48,7 @@ import { OfflineHttpService, OutboxEntry } from '../../../core/offline/offline-h
           </button>
 
           <a *ngIf="offlineSync.pendingCount() > 0" routerLink="/sync-inbox" class="btn-inbox">
-            Ventas offline →
+            Ventas y reservas offline →
           </a>
         </div>
       </div>

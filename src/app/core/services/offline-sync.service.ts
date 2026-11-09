@@ -129,16 +129,28 @@ export class OfflineSyncService {
     return operation;
   }
 
+  /**
+   * Guarda la reserva en el dispositivo y la sincroniza cuando hay señal.
+   * `clientOperationUuid` identifica el intento: si ya existe en la cola local se devuelve la misma
+   * reserva sin volver a guardarla, y el servidor también la acepta una sola vez por ese id.
+   */
   async recordOfflineReservation(reservation: {branchId: number; userId: number; customerName?: string;
-    pickupDate?: string; notes?: string; items: {variant_id: number; quantity: number; unit_price?: number; variant_name?: string; sku?: string}[]}) {
+    pickupDate?: string; notes?: string; clientOperationUuid?: string;
+    items: {variant_id: number; quantity: number; unit_price?: number; variant_name?: string; sku?: string}[]}): Promise<{operation: LocalReservationOperation; duplicate: boolean}> {
     const c = this.context(); this.checkRecordingSession(c);
     if (reservation.userId !== c.store.ownerId && !this.auth.hasPermission('reservations:write')) throw new Error('No puedes reservar para otro cliente.');
-    const operation: LocalReservationOperation = {client_operation_uuid: crypto.randomUUID(), branch_id: reservation.branchId,
+    const operation: LocalReservationOperation = {client_operation_uuid: reservation.clientOperationUuid || crypto.randomUUID(), branch_id: reservation.branchId,
       user_id: reservation.userId, customer_name: reservation.customerName, pickup_date: reservation.pickupDate,
       notes: reservation.notes, items: structuredClone(reservation.items), created_at: new Date().toISOString(), sync_status: 'PENDIENTE'};
-    await this.locked(c, () => c.store.record('reservation', operation, () => this.checkRecordingSession(c)));
+    const result = await this.locked(c, async () => {
+      // Dentro del bloqueo entre pestañas: dos toques o dos pestañas no pueden guardar el mismo intento dos veces.
+      const existing = await c.store.db.local_reservations.get(operation.client_operation_uuid);
+      if (existing) return {operation: existing, duplicate: true};
+      await c.store.record('reservation', operation, () => this.checkRecordingSession(c));
+      return {operation, duplicate: false};
+    });
     await this.refreshPendingCount(); this.automaticSync();
-    return operation;
+    return result;
   }
 
   async syncBatch(branchId?: number, force = true): Promise<SyncBatchResponse | null> {
