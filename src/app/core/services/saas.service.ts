@@ -5,6 +5,7 @@ import { environment } from '../../../environments/environment';
 import {
   SubscriptionPlan,
   SubscriptionPlanInput,
+  SubscriptionCheckout,
   AIModelOptions,
   TenantDetail,
   TenantCreateRequest,
@@ -67,9 +68,10 @@ export class SaasService {
     );
   }
 
-  changeMyPlan(planCode: string): Observable<TenantDetail> {
+  /** Inicia el cobro (PayPal) del cambio de plan; el plan se aplica solo tras verificar el pago. */
+  changeMyPlan(planCode: string): Observable<SubscriptionCheckout> {
     this.isLoading.set(true);
-    return this.http.post<TenantDetail>(`${this.baseUrl}/my-subscription/change-plan`, { plan_code: planCode }).pipe(
+    return this.http.post<SubscriptionCheckout>(`${this.baseUrl}/my-subscription/checkout`, { kind: 'change_plan', plan_code: planCode }).pipe(
       tap({
         next: () => {
           // Recargar suscripción activa
@@ -97,9 +99,14 @@ export class SaasService {
     );
   }
 
-  renewMySubscription(): Observable<TenantDetail> {
+  verifySubscriptionPayment(paymentId: number): Observable<SubscriptionCheckout> {
+    return this.http.post<SubscriptionCheckout>(`${this.baseUrl}/my-subscription/payments/${paymentId}/verify`, {});
+  }
+
+  /** Inicia el cobro (PayPal) de la renovación mensual. */
+  renewMySubscription(): Observable<SubscriptionCheckout> {
     this.isLoading.set(true);
-    return this.http.post<TenantDetail>(`${this.baseUrl}/my-subscription/renew`, {}).pipe(
+    return this.http.post<SubscriptionCheckout>(`${this.baseUrl}/my-subscription/checkout`, { kind: 'renew' }).pipe(
       tap({
         next: () => {
           this.getMySubscription().subscribe();

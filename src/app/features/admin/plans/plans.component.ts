@@ -1,11 +1,11 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { SaasService } from '../../../core/services/saas.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { ToastService } from '../../../core/services/toast.service';
-import { AIModelOptions, MySubscriptionResponse, SubscriptionPlan, SubscriptionPlanInput } from '../../../core/models';
+import { AIModelOptions, MySubscriptionResponse, SubscriptionCheckout, SubscriptionPlan, SubscriptionPlanInput } from '../../../core/models';
 
 @Component({
   selector: 'app-plans',
@@ -793,6 +793,8 @@ export class SubscriptionPlansComponent implements OnInit {
     public saas: SaasService,
     public auth: AuthService,
     private toast: ToastService,
+    private route: ActivatedRoute,
+    private router: Router,
   ) {}
 
   changing = false;
@@ -809,6 +811,7 @@ export class SubscriptionPlansComponent implements OnInit {
   ngOnInit(): void {
     this.loadPlans();
     this.loadData();
+    this.handlePaymentReturn();
     if (this.auth.isSuperAdmin()) {
       this.saas.getAiModels().subscribe({ next: m => this.models = m, error: () => this.models = null });
     }
@@ -898,14 +901,43 @@ export class SubscriptionPlansComponent implements OnInit {
     });
   }
 
+  /** Vuelta desde PayPal (?sub_payment=ID): el servidor confirma el pago y recién entonces aplica el plan. */
+  private handlePaymentReturn(): void {
+    const query = this.route.snapshot.queryParamMap;
+    const id = Number(query.get('sub_payment'));
+    if (!id) return;
+    const clear = () => this.router.navigate([], { relativeTo: this.route, queryParams: {}, replaceUrl: true });
+    if (query.get('cancelled')) { this.toast.error('Cancelaste el pago. Tu plan no cambió.'); clear(); return; }
+    this.saas.verifySubscriptionPayment(id).subscribe({
+      next: result => { this.reportCheckout(result); clear(); },
+      error: err => { this.toast.error(err.error?.detail || 'No se pudo verificar el pago con PayPal. Reintenta en unos segundos.'); },
+    });
+  }
+
+  /** Redirige a PayPal si falta pagar; si ya se aplicó (o el plan es gratis) informa y recarga. */
+  private reportCheckout(result: SubscriptionCheckout): void {
+    if (result.status === 'pending' && result.payment_url) {
+      this.toast.success(`Redirigiendo a PayPal para pagar USD ${result.amount.toFixed(2)}…`);
+      window.location.assign(result.payment_url);
+      return;
+    }
+    if (result.status === 'pending') this.toast.error('PayPal aún no confirma el pago. Vuelve a intentarlo en unos segundos.');
+    else if (result.status === 'applied') this.toast.success(result.kind === 'renew'
+      ? '¡Pago confirmado! Suscripción renovada por 30 días.'
+      : `¡Pago confirmado! Tu empresa ya está en el ${result.plan?.name || 'nuevo plan'}.`);
+    else this.toast.error(result.error || 'El pago no pudo aplicarse. Contacta al administrador de la plataforma.');
+    this.loadData();
+  }
+
   renewSubscription(): void {
     if (this.renewing) return;
+    const plan = this.sub()?.plan;
+    if (!confirm(`La renovación por 30 días cuesta USD ${(plan?.price ?? 0).toFixed(2)} y se paga con PayPal. ¿Continuar?`)) return;
     this.renewing = true;
     this.saas.renewMySubscription().subscribe({
-      next: () => {
+      next: (result) => {
         this.renewing = false;
-        this.toast.success('¡Suscripción renovada por 30 días adicionales!');
-        this.loadData();
+        this.reportCheckout(result);
       },
       error: (err) => {
         this.renewing = false;
@@ -917,15 +949,16 @@ export class SubscriptionPlansComponent implements OnInit {
   confirmPlanChange(targetPlanCode: string, planName: string): void {
     if (this.changing) return;
     const current = this.sub()?.plan?.name || 'Plan Básico';
-    const ok = confirm(`¿Confirmas que deseas cambiar tu suscripción a ${planName}?\n\nTu plan actual (${current}) será reemplazado inmediatamente.`);
+    const price = this.saas.plans().find(p => p.code === targetPlanCode)?.price ?? 0;
+    const ok = confirm(`¿Cambiar tu suscripción a ${planName}?\n\nSe cobrarán USD ${price.toFixed(2)} con PayPal por un ciclo nuevo de 30 días. ` +
+      `Tu plan actual (${current}) se reemplaza solo cuando PayPal confirme el pago.`);
     if (!ok) return;
 
     this.changing = true;
     this.saas.changeMyPlan(targetPlanCode).subscribe({
       next: (res) => {
         this.changing = false;
-        this.toast.success(`¡Suscripción actualizada exitosamente a ${planName}!`);
-        this.loadData();
+        this.reportCheckout(res);
       },
       error: (err) => {
         this.changing = false;

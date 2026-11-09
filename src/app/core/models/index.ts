@@ -255,6 +255,21 @@ export interface SubscriptionPlan {
 /** Campos que el Superadmin puede editar; null en un límite = ilimitado. */
 export type SubscriptionPlanInput = Partial<Omit<SubscriptionPlan, 'id' | 'subscribers_count' | 'created_at'>>;
 
+export interface SubscriptionCheckout {
+  payment_id: number;
+  kind: 'change_plan' | 'renew';
+  status: 'pending' | 'applied' | 'failed' | 'cancelled';
+  amount: number;
+  currency: string;
+  provider: string;
+  payment_url?: string | null;
+  plan?: SubscriptionPlan | null;
+  error?: string | null;
+  created_at?: string | null;
+  paid_at?: string | null;
+  tenant?: TenantDetail | null;
+}
+
 export interface AIModelOptions {
   text_models: string[];
   image_models: string[];
