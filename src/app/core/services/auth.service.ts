@@ -1,8 +1,9 @@
 import { CartService } from './cart.service';
 import { Injectable, signal, computed } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { Observable, tap, catchError, throwError, switchMap, map, finalize } from 'rxjs';
+import { Observable, tap, catchError, throwError, switchMap, map, finalize, from } from 'rxjs';
+import { rememberCredential, verifyOfflineCredential } from '../offline/offline-credentials';
 import { environment } from '../../../environments/environment';
 import {
   AuthResponse, LoginRequest, RegisterRequest, User
@@ -53,6 +54,8 @@ export class AuthService {
   // ─── CU-02: Login ─────────────────────────────────────────────────────────
   login(credentials: LoginRequest): Observable<AuthResponse> {
     this._isLoading.set(true);
+    // Sin internet: entrar con la sesión guardada en este dispositivo tras un inicio en línea previo.
+    if (!navigator.onLine) return this.offlineLogin(credentials);
     // FastAPI OAuth2 requires x-www-form-urlencoded
     const formData = new HttpParams()
       .set('username', credentials.username)
@@ -69,14 +72,36 @@ export class AuthService {
         this._currentUser.set(null);
         localStorage.removeItem(this.USER_KEY);
         localStorage.setItem(this.TOKEN_KEY, res.access_token);
-        return this.fetchMe().pipe(map(() => res));
+        return this.fetchMe().pipe(
+          switchMap(user => from(rememberCredential(credentials.username, credentials.password, res.access_token, user)
+            .catch(() => undefined))),
+          map(() => res));
       }),
       catchError(err => {
+        // El servidor no responde (sin red real aunque el navegador diga "en línea"): intentar sin conexión.
+        if (err instanceof HttpErrorResponse && err.status === 0) return this.offlineLogin(credentials);
         localStorage.removeItem(this.TOKEN_KEY);
         this._currentUser.set(null);
         return throwError(() => err);
       }),
       finalize(() => this._isLoading.set(false))
+    );
+  }
+
+  /** Inicio de sesión sin conexión: valida contra el hash guardado y restaura el último token y perfil. */
+  private offlineLogin(credentials: LoginRequest): Observable<AuthResponse> {
+    return from(verifyOfflineCredential(credentials.username, credentials.password)).pipe(
+      map(({ token, user }) => {
+        this.cart.clearCart();
+        localStorage.setItem(this.TOKEN_KEY, token);
+        localStorage.setItem(this.USER_KEY, JSON.stringify(user));
+        this._currentUser.set(user);
+        this.redirectByRole(user.role?.name || '');
+        return { access_token: token, token_type: 'bearer', role: user.role?.name ?? null, tenant_id: user.tenant_id ?? undefined } as AuthResponse;
+      }),
+      catchError(err => throwError(() => new HttpErrorResponse({ status: 0, statusText: 'Offline',
+        error: { detail: err?.message || 'Sin conexión: no se pudo iniciar sesión.' } }))),
+      finalize(() => this._isLoading.set(false)),
     );
   }
 

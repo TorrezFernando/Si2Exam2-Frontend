@@ -3,53 +3,78 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { NetworkService } from '../../../core/services/network.service';
 import { OfflineSyncService } from '../../../core/services/offline-sync.service';
+import { OfflineHttpService, OutboxEntry } from '../../../core/offline/offline-http.service';
 
 @Component({
   selector: 'app-offline-banner',
   standalone: true,
   imports: [CommonModule, RouterLink],
   template: `
-    <div *ngIf="network.isOffline() || offlineSync.pendingCount() > 0" class="offline-banner-container">
-      <div class="offline-banner" [class.offline-alert]="network.isOffline()" [class.sync-pending]="network.isOnline() && offlineSync.pendingCount() > 0">
+    <div *ngIf="isOffline() || totalPending() > 0 || outbox.failed().length > 0" class="offline-banner-container">
+      <div class="offline-banner" [class.offline-alert]="isOffline()" [class.sync-pending]="!isOffline() && totalPending() > 0">
         <div class="banner-content">
           <div class="icon-wrap">
-            <span *ngIf="network.isOffline()" class="pulse-icon">⚡</span>
-            <span *ngIf="network.isOnline()" class="pulse-icon">🔄</span>
+            <span *ngIf="isOffline()" class="pulse-icon">⚡</span>
+            <span *ngIf="!isOffline()" class="pulse-icon">🔄</span>
           </div>
           <div class="text-wrap">
-            <strong *ngIf="network.isOffline()">Modo Sin Conexión Activado:</strong>
-            <strong *ngIf="network.isOnline()">Conexión Restaurada:</strong>
+            <strong *ngIf="isOffline()">Modo Sin Conexión Activado:</strong>
+            <strong *ngIf="!isOffline()">Conexión restaurada:</strong>
             <span>
-              {{ network.isOffline() 
-                ? 'Operando con catálogo local en IndexedDB. Los datos de stock podrían estar desactualizados.' 
-                : 'Tienes operaciones locales pendientes de sincronizar con el servidor central.' }}
+              {{ isOffline()
+                ? 'Trabajando con los datos guardados en este dispositivo. Los cambios se guardan y se sincronizan al volver internet.'
+                : (totalPending() > 0 ? 'Tienes cambios hechos sin conexión pendientes de sincronizar.' : 'Algunos cambios hechos sin conexión no se pudieron sincronizar.') }}
             </span>
           </div>
         </div>
 
         <div class="banner-actions">
-          <span *ngIf="offlineSync.pendingCount() > 0" class="badge-pending">
-            {{ offlineSync.pendingCount() }} operación{{ offlineSync.pendingCount() > 1 ? 'es' : '' }} en cola
+          <span *ngIf="totalPending() > 0" class="badge-pending">
+            {{ totalPending() }} cambio{{ totalPending() > 1 ? 's' : '' }} en cola
           </span>
 
-          <button 
-            *ngIf="network.isOnline() && offlineSync.pendingCount() > 0"
-            class="btn-sync" 
-            [disabled]="offlineSync.isSyncing()"
-            (click)="triggerSync()"
-          >
-            <span *ngIf="offlineSync.isSyncing()" class="spinner"></span>
-            {{ offlineSync.isSyncing() ? 'Sincronizando...' : 'Sincronizar Ahora' }}
+          <button *ngIf="outbox.failed().length" class="btn-sync" (click)="showFailed = !showFailed">
+            ⚠️ {{ outbox.failed().length }} con error
           </button>
 
-          <a routerLink="/sync-inbox" class="btn-inbox">
-            Bandeja de Sincronización →
+          <button
+            *ngIf="!isOffline() && totalPending() > 0"
+            class="btn-sync"
+            [disabled]="offlineSync.isSyncing() || outbox.syncing()"
+            (click)="triggerSync()"
+          >
+            <span *ngIf="offlineSync.isSyncing() || outbox.syncing()" class="spinner"></span>
+            {{ offlineSync.isSyncing() || outbox.syncing() ? 'Sincronizando...' : 'Sincronizar Ahora' }}
+          </button>
+
+          <a *ngIf="offlineSync.pendingCount() > 0" routerLink="/sync-inbox" class="btn-inbox">
+            Ventas offline →
           </a>
+        </div>
+      </div>
+      <div *ngIf="showFailed && outbox.failed().length" class="failed-panel">
+        <strong>Cambios que el servidor rechazó al sincronizar</strong>
+        <p>Corrige la causa (por ejemplo, límite del plan o stock) y reintenta, o descarta el cambio.</p>
+        <div *ngFor="let entry of outbox.failed()" class="failed-row">
+          <div>
+            <code>{{ entry.label }}</code>
+            <small>{{ entry.createdAt | date:'short' }} · {{ entry.error }}</small>
+          </div>
+          <div class="failed-actions">
+            <button class="btn-sync" (click)="retry(entry)">Reintentar</button>
+            <button class="btn-inbox" (click)="discard(entry)">Descartar</button>
+          </div>
         </div>
       </div>
     </div>
   `,
   styles: [`
+    .failed-panel { background: #1f2937; color: #f9fafb; padding: 12px 24px; font-size: 0.85rem; max-height: 50vh; overflow: auto; }
+    .failed-panel p { margin: 4px 0 10px; opacity: 0.8; }
+    .failed-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid rgba(255,255,255,0.1); }
+    .failed-row small { display: block; opacity: 0.85; margin-top: 2px; }
+    .failed-actions { display: flex; gap: 8px; align-items: center; }
+
     .offline-banner-container {
       position: sticky;
       top: 0;
@@ -188,10 +213,24 @@ import { OfflineSyncService } from '../../../core/services/offline-sync.service'
 export class OfflineBannerComponent {
   readonly network = inject(NetworkService);
   readonly offlineSync = inject(OfflineSyncService);
+  readonly outbox = inject(OfflineHttpService);
+  showFailed = false;
+
+  /** Sin red, o con red pero sin respuesta del servidor. */
+  isOffline() { return this.network.isOffline() || !this.outbox.serverReachable(); }
+
+  totalPending() { return this.offlineSync.pendingCount() + this.outbox.pending(); }
 
   triggerSync() {
-    this.offlineSync.syncBatch().catch(err => {
-      console.error('[OFFLINE-BANNER] Error al forzar sincronización:', err);
-    });
+    if (this.offlineSync.pendingCount() > 0) {
+      this.offlineSync.syncBatch().catch(err => console.error('[OFFLINE-BANNER] Error al forzar sincronización:', err));
+    }
+    this.outbox.sync();
+  }
+
+  retry(entry: OutboxEntry) { this.outbox.retry(entry); }
+
+  discard(entry: OutboxEntry) {
+    if (confirm(`¿Descartar el cambio "${entry.label}"? No se enviará al servidor.`)) this.outbox.discard(entry);
   }
 }
