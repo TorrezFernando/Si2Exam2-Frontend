@@ -236,12 +236,30 @@ export interface SubscriptionPlan {
   id: number;
   name: string;
   code: string;
+  description?: string | null;
   max_branches: number;
+  max_users?: number | null;
+  max_products?: number | null;
   has_ai_reports: boolean;
+  has_ai_shopper?: boolean;
+  has_ai_tryon?: boolean;
+  ai_text_model?: string | null;
+  ai_image_model?: string | null;
   has_offline_sync: boolean;
   price: number;
   is_active: boolean;
+  subscribers_count?: number;
   created_at?: string;
+}
+
+/** Campos que el Superadmin puede editar; null en un límite = ilimitado. */
+export type SubscriptionPlanInput = Partial<Omit<SubscriptionPlan, 'id' | 'subscribers_count' | 'created_at'>>;
+
+export interface AIModelOptions {
+  text_models: string[];
+  image_models: string[];
+  default_text_model: string;
+  default_image_model: string;
 }
 
 export interface Tenant {
@@ -287,7 +305,10 @@ export interface SubscriptionUsage {
   branches_count: number;
   branches_limit: number;
   users_count: number;
+  users_limit?: number | null;
+  staff_count?: number;
   products_count: number;
+  products_limit?: number | null;
   orders_count: number;
 }
 

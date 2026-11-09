@@ -4,6 +4,8 @@ import { Observable, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import {
   SubscriptionPlan,
+  SubscriptionPlanInput,
+  AIModelOptions,
   TenantDetail,
   TenantCreateRequest,
   TenantUpdateRequest,
@@ -24,9 +26,10 @@ export class SaasService {
   constructor(private http: HttpClient) {}
 
   // ─── Planes SaaS ──────────────────────────────────────────────────────────
-  getPlans(): Observable<SubscriptionPlan[]> {
+  getPlans(includeInactive = false): Observable<SubscriptionPlan[]> {
     this.isLoading.set(true);
-    return this.http.get<SubscriptionPlan[]>(`${this.baseUrl}/plans`).pipe(
+    const params = includeInactive ? { include_inactive: 'true' } : undefined;
+    return this.http.get<SubscriptionPlan[]>(`${this.baseUrl}/plans`, { params }).pipe(
       tap({
         next: (res) => {
           this.plans.set(res);
@@ -38,6 +41,19 @@ export class SaasService {
   }
 
   // ─── Mi Suscripción y Consumo ─────────────────────────────────────────────
+  // ─── Editor de planes (Superadmin) ─────────────────────────────────────────
+  getAiModels(): Observable<AIModelOptions> {
+    return this.http.get<AIModelOptions>(`${this.baseUrl}/plans/ai-models`);
+  }
+
+  createPlan(payload: SubscriptionPlanInput): Observable<SubscriptionPlan> {
+    return this.http.post<SubscriptionPlan>(`${this.baseUrl}/plans`, payload);
+  }
+
+  updatePlan(planId: number, payload: SubscriptionPlanInput): Observable<SubscriptionPlan> {
+    return this.http.patch<SubscriptionPlan>(`${this.baseUrl}/plans/${planId}`, payload);
+  }
+
   getMySubscription(): Observable<MySubscriptionResponse> {
     this.isLoading.set(true);
     return this.http.get<MySubscriptionResponse>(`${this.baseUrl}/my-subscription`).pipe(

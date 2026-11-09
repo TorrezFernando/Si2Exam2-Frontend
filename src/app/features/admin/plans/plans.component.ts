@@ -1,15 +1,16 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { SaasService } from '../../../core/services/saas.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { ToastService } from '../../../core/services/toast.service';
-import { MySubscriptionResponse } from '../../../core/models';
+import { AIModelOptions, MySubscriptionResponse, SubscriptionPlan, SubscriptionPlanInput } from '../../../core/models';
 
 @Component({
   selector: 'app-plans',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <div class="content-area">
 
@@ -20,13 +21,14 @@ import { MySubscriptionResponse } from '../../../core/models';
           <h1 class="page-title">{{ auth.isSuperAdmin() ? 'Catálogo Global de Planes SaaS' : 'Planes & Suscripción' }}</h1>
           <p class="page-desc">
             {{ auth.isSuperAdmin()
-              ? 'Consulta los niveles de servicio disponibles en la plataforma. Para asignar, cambiar o renovar el plan de una empresa específica, utiliza el módulo Empresas SaaS.'
+              ? 'Edita los límites, funciones de IA, modelos y precio de cada plan, o crea planes nuevos. Para asignar, cambiar o renovar el plan de una empresa, utiliza el módulo Empresas SaaS.'
               : 'Gestiona el plan mensual de tu empresa, controla la cancelación automática a fin de mes y revisa tus límites contratados.' }}
           </p>
         </div>
         <div class="header-actions">
           @if (auth.isSuperAdmin()) {
-            <a routerLink="/admin/tenants" class="btn btn-primary">
+            <button class="btn btn-primary" (click)="startCreate()">➕ Nuevo plan</button>
+            <a routerLink="/admin/tenants" class="btn btn-secondary">
               🏢 Gestionar Empresas SaaS
             </a>
           }
@@ -135,6 +137,44 @@ import { MySubscriptionResponse } from '../../../core/models';
                   </span>
                 </div>
 
+                <div class="usage-item">
+                  <div class="usage-label">
+                    <span>Usuarios del personal</span>
+                    <strong>{{ u.staff_count ?? 0 }} / {{ u.users_limit ?? '∞' }}</strong>
+                  </div>
+                  @if (u.users_limit) {
+                    <div class="progress-bar">
+                      <div class="progress-fill" [style.width.%]="((u.staff_count ?? 0) / u.users_limit) * 100"
+                        [class.warning]="(u.staff_count ?? 0) >= u.users_limit"></div>
+                    </div>
+                  }
+                  <span class="usage-helper">Los clientes registrados no cuentan para este límite.</span>
+                </div>
+
+                <div class="usage-item">
+                  <div class="usage-label">
+                    <span>Productos activos</span>
+                    <strong>{{ u.products_count }} / {{ u.products_limit ?? '∞' }}</strong>
+                  </div>
+                  @if (u.products_limit) {
+                    <div class="progress-bar">
+                      <div class="progress-fill" [style.width.%]="(u.products_count / u.products_limit) * 100"
+                        [class.warning]="u.products_count >= u.products_limit"></div>
+                    </div>
+                  }
+                </div>
+
+                <!-- Funciones de IA del plan -->
+                <div class="usage-item stat">
+                  <div class="stat-icon-wrap" [class.enabled]="s.plan?.has_ai_shopper || s.plan?.has_ai_tryon">🤖</div>
+                  <div class="stat-details">
+                    <span class="stat-title">IA para clientes</span>
+                    <strong class="stat-val">
+                      Personal Shopper: {{ s.plan?.has_ai_shopper ? 'Sí' : 'No' }} · Probador virtual: {{ s.plan?.has_ai_tryon ? 'Sí' : 'No' }}
+                    </strong>
+                  </div>
+                </div>
+
                 <!-- Reportes IA -->
                 <div class="usage-item stat">
                   <div class="stat-icon-wrap" [class.enabled]="s.plan?.has_ai_reports">
@@ -185,21 +225,105 @@ import { MySubscriptionResponse } from '../../../core/models';
         </p>
       </div>
 
+      @if (editing) {
+        <form class="plan-editor" (ngSubmit)="savePlan()" #planForm="ngForm">
+          <div class="editor-head">
+            <h2>{{ editingId ? 'Editar ' + (form.name || 'plan') : 'Nuevo plan' }}</h2>
+            @if (editingId && editingSubscribers) {
+              <span class="badge badge-warning">{{ editingSubscribers }} empresa(s) suscrita(s): los cambios se aplican de inmediato</span>
+            }
+          </div>
+          <div class="editor-grid">
+            <label>Código
+              <input class="form-control" name="code" [(ngModel)]="form.code" [disabled]="!!editingId" required pattern="[a-z0-9][a-z0-9_-]*" maxlength="30" placeholder="ej. starter">
+            </label>
+            <label>Nombre
+              <input class="form-control" name="name" [(ngModel)]="form.name" required minlength="2" maxlength="80">
+            </label>
+            <label>Precio mensual (USD)
+              <input class="form-control" type="number" name="price" [(ngModel)]="form.price" required min="0" step="0.01">
+            </label>
+            <label class="span-2">Descripción
+              <input class="form-control" name="description" [(ngModel)]="form.description" maxlength="255" placeholder="Opcional">
+            </label>
+          </div>
+
+          <h3>Límites</h3>
+          <p class="text-secondary text-sm">Deja usuarios o productos vacíos para que sean ilimitados. Bajar un límite no desactiva lo que ya existe; solo impide crear más.</p>
+          <div class="editor-grid">
+            <label>Sucursales activas
+              <input class="form-control" type="number" name="max_branches" [(ngModel)]="form.max_branches" required min="1">
+            </label>
+            <label>Usuarios del personal
+              <input class="form-control" type="number" name="max_users" [(ngModel)]="form.max_users" min="1" placeholder="Ilimitado">
+            </label>
+            <label>Productos activos
+              <input class="form-control" type="number" name="max_products" [(ngModel)]="form.max_products" min="1" placeholder="Ilimitado">
+            </label>
+          </div>
+
+          <h3>Funciones</h3>
+          <div class="editor-grid toggles">
+            <label><input type="checkbox" name="has_ai_reports" [(ngModel)]="form.has_ai_reports"> Reportes y análisis con IA</label>
+            <label><input type="checkbox" name="has_ai_shopper" [(ngModel)]="form.has_ai_shopper"> Personal Shopper y recomendaciones IA</label>
+            <label><input type="checkbox" name="has_ai_tryon" [(ngModel)]="form.has_ai_tryon"> Probador virtual con IA</label>
+            <label><input type="checkbox" name="has_offline_sync" [(ngModel)]="form.has_offline_sync"> Caja offline</label>
+            <label><input type="checkbox" name="is_active" [(ngModel)]="form.is_active"> Plan disponible para contratar</label>
+          </div>
+
+          <h3>Modelos de IA</h3>
+          <div class="editor-grid">
+            <label>Modelo de texto (chat, recomendaciones, reportes)
+              <select class="form-control" name="ai_text_model" [(ngModel)]="form.ai_text_model" [disabled]="!form.has_ai_reports && !form.has_ai_shopper">
+                <option [ngValue]="null">Por defecto del servidor ({{ models?.default_text_model || '…' }})</option>
+                @for (m of models?.text_models ?? []; track m) { <option [ngValue]="m">{{ m }}</option> }
+              </select>
+            </label>
+            <label>Modelo de imagen (probador virtual)
+              <select class="form-control" name="ai_image_model" [(ngModel)]="form.ai_image_model" [disabled]="!form.has_ai_tryon">
+                <option [ngValue]="null">Por defecto del servidor ({{ models?.default_image_model || '…' }})</option>
+                @for (m of models?.image_models ?? []; track m) { <option [ngValue]="m">{{ m }}</option> }
+              </select>
+            </label>
+          </div>
+
+          <div class="editor-actions">
+            <button type="button" class="btn btn-secondary" (click)="cancelEdit()" [disabled]="saving">Cancelar</button>
+            <button type="submit" class="btn btn-primary" [disabled]="saving || planForm.invalid">{{ saving ? 'Guardando…' : 'Guardar plan' }}</button>
+          </div>
+        </form>
+      }
+
       <div class="plans-grid">
         @for (plan of saas.plans(); track plan.id) {
-          <div class="plan-card" [class.pro]="plan.has_ai_reports" [class.is-current]="!auth.isSuperAdmin() && isCurrentPlan(plan.code)">
+          <div class="plan-card" [class.pro]="plan.has_ai_reports" [class.is-current]="!auth.isSuperAdmin() && isCurrentPlan(plan.code)" [class.inactive-plan]="!plan.is_active">
             <div class="plan-name">{{ plan.name }}</div>
+            @if (auth.isSuperAdmin()) {
+              <div class="text-secondary text-sm">
+                Código {{ plan.code }} · {{ plan.subscribers_count || 0 }} empresa(s)
+                @if (!plan.is_active) { · <strong>No disponible</strong> }
+              </div>
+            }
+            @if (plan.description) { <p class="text-secondary text-sm">{{ plan.description }}</p> }
             <div class="plan-pricing"><span class="currency">USD</span><span class="amount">{{ plan.price | number:'1.2-2' }}</span><span class="period">/ mes</span></div>
             <ul class="features-list">
               <li>Hasta {{ plan.max_branches }} sucursales activas</li>
+              <li>{{ plan.max_users ? 'Hasta ' + plan.max_users + ' usuarios del personal' : 'Usuarios del personal ilimitados' }}</li>
+              <li>{{ plan.max_products ? 'Hasta ' + plan.max_products + ' productos activos' : 'Productos ilimitados' }}</li>
               <li>Catálogo, ventas, reservas e inventario por empresa</li>
               <li>Reportes con IA: {{ plan.has_ai_reports ? 'Incluidos' : 'No incluidos' }}</li>
+              <li>Personal Shopper IA: {{ plan.has_ai_shopper ? 'Incluido' : 'No incluido' }}</li>
+              <li>Probador virtual IA: {{ plan.has_ai_tryon ? 'Incluido' : 'No incluido' }}</li>
+              @if (auth.isSuperAdmin() && (plan.ai_text_model || plan.ai_image_model)) {
+                <li>Modelos: {{ plan.ai_text_model || 'texto por defecto' }} · {{ plan.ai_image_model || 'imagen por defecto' }}</li>
+              }
               <li>Sincronización offline: {{ plan.has_offline_sync ? 'Incluida' : 'No incluida' }}</li>
               <li>Ciclo de 30 días con cancelación automática a fin de mes</li>
             </ul>
             <div class="plan-cta-box">
               @if (auth.isSuperAdmin()) {
-                <a routerLink="/admin/tenants" class="btn btn-outline w-full" style="text-align: center; display: block;">
+                <button class="btn btn-primary w-full" (click)="startEdit(plan)">✏️ Editar plan</button>
+                <a routerLink="/admin/tenants" class="btn btn-outline w-full" style="text-align: center; display: block; margin-top: 8px;">
                   Asignar en Empresas SaaS →
                 </a>
               } @else {
@@ -641,6 +765,24 @@ import { MySubscriptionResponse } from '../../../core/models';
     }
 
     .check-yes { color: #22c55e; font-weight: 600; font-size: 0.88rem; }
+
+    .plan-editor {
+      background: var(--bg-card, rgba(255,255,255,0.03));
+      border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 28px;
+    }
+    .plan-editor h2 { margin: 0; font-size: 1.25rem; }
+    .plan-editor h3 { margin: 20px 0 8px; font-size: 1rem; }
+    .editor-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+    .editor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 12px; }
+    .editor-grid label { display: flex; flex-direction: column; gap: 6px; font-size: 0.88rem; }
+    .editor-grid .span-2 { grid-column: span 2; }
+    .editor-grid.toggles label { flex-direction: row; align-items: center; gap: 8px; }
+    .editor-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+    .plan-card.inactive-plan { opacity: 0.6; }
+    @media (max-width: 600px) { .editor-grid .span-2 { grid-column: auto; } }
     .check-no { color: var(--text-muted); font-size: 0.88rem; }
   `]
 })
@@ -657,9 +799,69 @@ export class SubscriptionPlansComponent implements OnInit {
   togglingAutoCancel = false;
   renewing = false;
 
+  editing = false;
+  editingId: number | null = null;
+  editingSubscribers = 0;
+  saving = false;
+  models: AIModelOptions | null = null;
+  form: SubscriptionPlanInput = {};
+
   ngOnInit(): void {
-    this.saas.getPlans().subscribe({error: () => this.toast.error('No se pudieron cargar los planes')});
+    this.loadPlans();
     this.loadData();
+    if (this.auth.isSuperAdmin()) {
+      this.saas.getAiModels().subscribe({ next: m => this.models = m, error: () => this.models = null });
+    }
+  }
+
+  loadPlans(): void {
+    // El Superadmin ve también los planes no disponibles para poder reactivarlos.
+    this.saas.getPlans(this.auth.isSuperAdmin()).subscribe({error: () => this.toast.error('No se pudieron cargar los planes')});
+  }
+
+  startCreate(): void {
+    this.editing = true; this.editingId = null; this.editingSubscribers = 0;
+    this.form = { code: '', name: '', description: '', price: 0, max_branches: 1, max_users: null, max_products: null,
+      has_ai_reports: false, has_ai_shopper: true, has_ai_tryon: true, has_offline_sync: true,
+      ai_text_model: null, ai_image_model: null, is_active: true };
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  startEdit(plan: SubscriptionPlan): void {
+    this.editing = true; this.editingId = plan.id; this.editingSubscribers = plan.subscribers_count || 0;
+    this.form = { code: plan.code, name: plan.name, description: plan.description ?? '', price: plan.price,
+      max_branches: plan.max_branches, max_users: plan.max_users ?? null, max_products: plan.max_products ?? null,
+      has_ai_reports: plan.has_ai_reports, has_ai_shopper: plan.has_ai_shopper ?? true, has_ai_tryon: plan.has_ai_tryon ?? true,
+      has_offline_sync: plan.has_offline_sync, ai_text_model: plan.ai_text_model ?? null,
+      ai_image_model: plan.ai_image_model ?? null, is_active: plan.is_active };
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  cancelEdit(): void { this.editing = false; this.editingId = null; }
+
+  savePlan(): void {
+    if (this.saving) return;
+    const limit = (v: unknown) => (v === '' || v === null || v === undefined) ? null : Number(v);
+    const { code, ...rest } = this.form;
+    const payload: SubscriptionPlanInput = { ...rest, description: (rest.description || '').trim() || null,
+      price: Number(rest.price), max_branches: Number(rest.max_branches),
+      max_users: limit(rest.max_users), max_products: limit(rest.max_products) };
+    if (this.editingId && this.editingSubscribers &&
+        !confirm(`Este plan tiene ${this.editingSubscribers} empresa(s) suscrita(s). Los cambios se aplicarán de inmediato. ¿Continuar?`)) return;
+    this.saving = true;
+    const request = this.editingId ? this.saas.updatePlan(this.editingId, payload) : this.saas.createPlan({ ...payload, code });
+    request.subscribe({
+      next: plan => {
+        this.saving = false; this.editing = false; this.editingId = null;
+        this.toast.success(`Plan "${plan.name}" guardado.`);
+        this.loadPlans();
+      },
+      error: err => {
+        this.saving = false;
+        const detail = err.error?.detail;
+        this.toast.error(typeof detail === 'string' ? detail : 'No se pudo guardar el plan. Revisa los campos.');
+      }
+    });
   }
 
   loadData(): void {
