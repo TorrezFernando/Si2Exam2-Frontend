@@ -22,7 +22,7 @@ import { OfflineHttpService, OutboxEntry } from '../../../core/offline/offline-h
             <strong *ngIf="!isOffline()">Conexión restaurada:</strong>
             <span>
               {{ isOffline()
-                ? 'Trabajando con los datos guardados en este dispositivo. Los cambios se guardan y se sincronizan al volver internet.'
+                ? 'Mostrando datos guardados en este dispositivo: precios, stock y disponibilidad pueden estar desactualizados' + (offlineSync.lastSyncTimestamp() ? ' (catálogo descargado el ' + (offlineSync.lastSyncTimestamp() | date:'dd/MM/yyyy HH:mm') + ')' : '') + '. Los cambios se guardan y se sincronizan al volver internet.'
                 : (totalPending() > 0 ? 'Tienes cambios hechos sin conexión pendientes de sincronizar.' : 'Algunos cambios hechos sin conexión no se pudieron sincronizar.') }}
             </span>
           </div>
