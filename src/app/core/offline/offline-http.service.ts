@@ -101,6 +101,8 @@ export class OfflineHttpService {
 
   // ─── Lecturas ──────────────────────────────────────────────────────────────
   get(req: HttpRequest<unknown>, next: HttpHandlerFn): Observable<HttpEvent<unknown>> {
+    // Información confidencial o de administración: nunca se guarda en el dispositivo.
+    if (/^\/(audit|backups)(\/|\?|$)/.test(this.relative(req.urlWithParams) || '')) return next(req);
     const db = this.db()!;
     const key = this.relative(req.urlWithParams)!;
     const fromCache = () => from(db.responses.get(key)).pipe(switchMap(row => row
