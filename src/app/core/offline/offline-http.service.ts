@@ -178,7 +178,12 @@ export class OfflineHttpService {
       idempotencyKey, method: req.method, path, body: req.body ?? null, tempId,
       label: `${req.method} ${path.split('?')[0]}`, status: 'pending', error: null, createdAt: new Date().toISOString(),
     };
-    return from(db.outbox.add(entry)).pipe(
+    // Si el dispositivo no puede guardar (modo incógnito, almacenamiento lleno o bloqueado) se informa el motivo exacto.
+    const saved = db.outbox.add(entry).catch((e: any) => {
+      throw this.offlineError(`No se pudo guardar el cambio en este dispositivo (${e?.name || 'almacenamiento no disponible'}). ` +
+        'Revisa que el navegador permita guardar datos del sitio y que no estés en modo incógnito.', req.urlWithParams);
+    });
+    return from(saved).pipe(
       tap(() => { this.refresh(); this.toast.success('Sin conexión: el cambio quedó guardado y se sincronizará al volver internet.'); }),
       switchMap(() => {
         const id = req.method === 'POST' ? tempId : Number(path.split('?')[0].split('/').pop());
