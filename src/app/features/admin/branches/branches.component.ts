@@ -90,7 +90,7 @@ export class BranchesComponent implements OnInit {
         this.loading = false;
       },
       error: (err) => {
-        this.toast.error('Error al cargar las sucursales');
+        this.toast.error(err?.error?.detail ? this.toast.extractError(err) : 'Error al cargar las sucursales');
         this.loading = false;
         console.error(err);
       }
@@ -132,7 +132,7 @@ export class BranchesComponent implements OnInit {
     if (this.saving) return;
     this.saving = true;
     const request = this.editingId ? this.apiService.updateBranch(this.editingId, this.draft) : this.apiService.createBranch(this.draft);
-    request.subscribe({next: () => {this.saving=false; this.editing=false; this.loadBranches();}, error: () => {this.saving=false; this.toast.error('No se pudo guardar la sucursal');}});
+    request.subscribe({next: () => {this.saving=false; this.editing=false; this.loadBranches();}, error: (err) => {this.saving=false; this.toast.error(err?.error?.detail ? this.toast.extractError(err) : 'No se pudo guardar la sucursal');}});
   }
 
 }

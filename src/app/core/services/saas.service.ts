@@ -99,6 +99,12 @@ export class SaasService {
     );
   }
 
+  /** Formulario de pago de plan: datos de facturación e id del intento (permite reenviarlo sin duplicar). */
+  startCheckout(body: { kind: 'change_plan' | 'renew'; plan_code?: string; request_key: string;
+                        billing: { name: string; tax_id?: string | null; email: string } }): Observable<SubscriptionCheckout> {
+    return this.http.post<SubscriptionCheckout>(`${this.baseUrl}/my-subscription/checkout`, body);
+  }
+
   verifySubscriptionPayment(paymentId: number): Observable<SubscriptionCheckout> {
     return this.http.post<SubscriptionCheckout>(`${this.baseUrl}/my-subscription/payments/${paymentId}/verify`, {});
   }

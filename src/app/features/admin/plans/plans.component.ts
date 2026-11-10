@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -224,6 +224,55 @@ import { AIModelOptions, MySubscriptionResponse, SubscriptionCheckout, Subscript
             : 'Elige el plan mensual que mejor se adapte al volumen de tu cadena o boutique.' }}
         </p>
       </div>
+
+      @if (checkout) {
+        <div class="checkout-backdrop" (click)="closeCheckout()"></div>
+        <form class="checkout-modal" (ngSubmit)="submitCheckout()" #payForm="ngForm">
+          <div class="checkout-head">
+            <h2>{{ checkout.kind === 'renew' ? 'Renovar suscripción' : 'Cambiar a ' + checkout.planName }}</h2>
+            <button type="button" class="btn btn-sm btn-secondary" (click)="closeCheckout()">✕</button>
+          </div>
+          <div class="checkout-total">
+            <span>Total a pagar</span>
+            <strong>USD {{ checkout.price | number:'1.2-2' }}</strong>
+            <small>Ciclo de 30 días. {{ checkout.kind === 'renew' ? 'Se suman al vencimiento actual.' : 'Tu plan actual se reemplaza cuando PayPal confirme el pago.' }}</small>
+          </div>
+          <h3>Datos de facturación</h3>
+          <label>Nombre o razón social
+            <input class="form-control" name="billName" [(ngModel)]="billing.name" required minlength="2" maxlength="120">
+          </label>
+          <label>NIT o CI (opcional)
+            <input class="form-control" name="billTax" [(ngModel)]="billing.tax_id" maxlength="30">
+          </label>
+          <label>Correo para el comprobante
+            <input class="form-control" type="email" name="billEmail" [(ngModel)]="billing.email" required email>
+          </label>
+          <h3>Método de pago</h3>
+          <div class="pay-method">💳 PayPal: paga con tu cuenta PayPal o con tarjeta en la página segura de PayPal.
+            FashionStore nunca recibe ni guarda los datos de tu tarjeta.</div>
+          @if (isOffline()) {
+            <p class="offline-note">⚡ Sin conexión: el formulario se guardará en este dispositivo y, al volver internet,
+              se abrirá PayPal automáticamente para que confirmes el pago de USD {{ checkout.price | number:'1.2-2' }}.</p>
+          }
+          <div class="editor-actions">
+            <button type="button" class="btn btn-secondary" (click)="closeCheckout()" [disabled]="changing || renewing">Cancelar</button>
+            <button type="submit" class="btn btn-primary" [disabled]="payForm.invalid || changing || renewing">
+              {{ isOffline() ? 'Guardar y pagar al reconectar' : (changing || renewing ? 'Procesando…' : 'Pagar USD ' + (checkout.price | number:'1.2-2') + ' con PayPal') }}
+            </button>
+          </div>
+        </form>
+      }
+
+      @if (pendingCheckout) {
+        <div class="pending-checkout">
+          <span>⏳ Pago de plan guardado sin conexión: {{ pendingCheckout.kind === 'renew' ? 'renovación' : pendingCheckout.planName }} · USD {{ pendingCheckout.price | number:'1.2-2' }}.
+            {{ isOffline() ? 'Se abrirá PayPal al volver internet.' : '' }}</span>
+          <div>
+            <button class="btn btn-sm btn-primary" (click)="resumePendingCheckout()" [disabled]="isOffline() || changing">Pagar ahora</button>
+            <button class="btn btn-sm btn-secondary" (click)="discardPendingCheckout()">Descartar</button>
+          </div>
+        </div>
+      }
 
       @if (editing) {
         <form class="plan-editor" (ngSubmit)="savePlan()" #planForm="ngForm">
@@ -782,11 +831,27 @@ import { AIModelOptions, MySubscriptionResponse, SubscriptionCheckout, Subscript
     .editor-grid.toggles label { flex-direction: row; align-items: center; gap: 8px; }
     .editor-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
     .plan-card.inactive-plan { opacity: 0.6; }
+    .checkout-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 10000; }
+    .checkout-modal { position: fixed; z-index: 10001; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto;
+      background: var(--bg-card, #1e1b2e); border: 1px solid var(--border-color, rgba(255,255,255,.12));
+      border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 10px; }
+    .checkout-modal label { display: flex; flex-direction: column; gap: 6px; font-size: .88rem; }
+    .checkout-modal h3 { margin: 10px 0 0; font-size: 1rem; }
+    .checkout-head { display: flex; justify-content: space-between; align-items: center; }
+    .checkout-head h2 { margin: 0; font-size: 1.3rem; }
+    .checkout-total { display: flex; flex-direction: column; padding: 14px; border-radius: 12px; background: rgba(99,102,241,.12); }
+    .checkout-total strong { font-size: 1.8rem; }
+    .checkout-total small { opacity: .75; }
+    .pay-method { padding: 12px; border-radius: 10px; background: rgba(255,255,255,.04); font-size: .88rem; }
+    .offline-note { color: #f59e0b; font-size: .88rem; }
+    .pending-checkout { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center;
+      padding: 12px 16px; border-radius: 12px; margin-bottom: 20px; background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.4); }
     @media (max-width: 600px) { .editor-grid .span-2 { grid-column: auto; } }
     .check-no { color: var(--text-muted); font-size: 0.88rem; }
   `]
 })
-export class SubscriptionPlansComponent implements OnInit {
+export class SubscriptionPlansComponent implements OnInit, OnDestroy {
   sub = signal<MySubscriptionResponse | null>(null);
 
   constructor(
@@ -807,11 +872,19 @@ export class SubscriptionPlansComponent implements OnInit {
   saving = false;
   models: AIModelOptions | null = null;
   form: SubscriptionPlanInput = {};
+  checkout: { kind: 'change_plan' | 'renew'; planCode?: string; planName: string; price: number } | null = null;
+  billing = { name: '', tax_id: '', email: '' };
+  pendingCheckout: { kind: 'change_plan' | 'renew'; planCode?: string; planName: string; price: number; requestKey: string;
+                     billing: { name: string; tax_id: string; email: string } } | null = null;
+  private onlineListener = () => this.autoResumePendingCheckout();
 
   ngOnInit(): void {
     this.loadPlans();
     this.loadData();
     this.handlePaymentReturn();
+    this.loadPendingCheckout();
+    window.addEventListener('online', this.onlineListener);
+    setTimeout(() => this.autoResumePendingCheckout(), 1500);
     if (this.auth.isSuperAdmin()) {
       this.saas.getAiModels().subscribe({ next: m => this.models = m, error: () => this.models = null });
     }
@@ -929,42 +1002,90 @@ export class SubscriptionPlansComponent implements OnInit {
     this.loadData();
   }
 
-  renewSubscription(): void {
-    if (this.renewing) return;
-    const plan = this.sub()?.plan;
-    if (!confirm(`La renovación por 30 días cuesta USD ${(plan?.price ?? 0).toFixed(2)} y se paga con PayPal. ¿Continuar?`)) return;
-    this.renewing = true;
-    this.saas.renewMySubscription().subscribe({
-      next: (result) => {
-        this.renewing = false;
+  ngOnDestroy(): void { window.removeEventListener('online', this.onlineListener); }
+
+  isOffline(): boolean { return !navigator.onLine; }
+
+  private get pendingKey() { return `fs_pending_plan_checkout_u${this.auth.currentUser()?.id}`; }
+
+  private loadPendingCheckout() {
+    try { this.pendingCheckout = JSON.parse(localStorage.getItem(this.pendingKey) || 'null'); } catch { this.pendingCheckout = null; }
+  }
+
+  private openCheckout(kind: 'change_plan' | 'renew', planName: string, price: number, planCode?: string) {
+    const user = this.auth.currentUser();
+    this.billing = { name: this.billing.name || this.sub()?.tenant?.name || user?.full_name || '',
+                     tax_id: this.billing.tax_id || '', email: this.billing.email || user?.email || '' };
+    this.checkout = { kind, planCode, planName, price };
+  }
+
+  closeCheckout() { if (!this.changing && !this.renewing) this.checkout = null; }
+
+  /** Envía el formulario; sin conexión lo guarda para pagarlo al volver internet. */
+  submitCheckout() {
+    if (!this.checkout) return;
+    const pending = { ...this.checkout, requestKey: `planform-${crypto.randomUUID()}`, billing: { ...this.billing } };
+    if (this.isOffline()) {
+      this.savePending(pending);
+      this.checkout = null;
+      this.toast.success('Sin conexión: el pago del plan quedó guardado. Al volver internet se abrirá PayPal para confirmarlo.');
+      return;
+    }
+    this.checkout = null;
+    this.sendCheckout(pending);
+  }
+
+  private savePending(pending: NonNullable<typeof this.pendingCheckout>) {
+    this.pendingCheckout = pending;
+    try { localStorage.setItem(this.pendingKey, JSON.stringify(pending)); } catch { /* sin almacenamiento */ }
+  }
+
+  private sendCheckout(pending: NonNullable<typeof this.pendingCheckout>) {
+    this.changing = true;
+    this.saas.startCheckout({ kind: pending.kind, plan_code: pending.planCode, request_key: pending.requestKey,
+      billing: { name: pending.billing.name, tax_id: pending.billing.tax_id || null, email: pending.billing.email } }).subscribe({
+      next: result => {
+        this.changing = false;
+        this.discardPendingCheckout(false);
         this.reportCheckout(result);
       },
-      error: (err) => {
-        this.renewing = false;
-        this.toast.error(err.error?.detail || 'No se pudo renovar la suscripción');
+      error: err => {
+        this.changing = false;
+        if (err?.status === 0) {  // se cortó la conexión justo al enviar: se conserva para reintentar
+          this.savePending(pending);
+          this.toast.error('Sin conexión: el pago quedó guardado y se reintentará al volver internet.');
+          return;
+        }
+        this.toast.error(err.error?.detail || 'No se pudo iniciar el pago con PayPal.');
       }
     });
   }
 
+  private autoResumePendingCheckout() {
+    this.loadPendingCheckout();
+    if (this.pendingCheckout && !this.isOffline() && !this.changing) {
+      this.toast.success('Conexión restaurada: abriendo PayPal para el pago de plan guardado…');
+      this.sendCheckout(this.pendingCheckout);
+    }
+  }
+
+  resumePendingCheckout() { if (this.pendingCheckout) this.sendCheckout(this.pendingCheckout); }
+
+  discardPendingCheckout(ask = true) {
+    if (ask && !confirm('¿Descartar el pago de plan guardado? No se cobrará nada.')) return;
+    this.pendingCheckout = null;
+    try { localStorage.removeItem(this.pendingKey); } catch { /* sin almacenamiento */ }
+  }
+
+  renewSubscription(): void {
+    if (this.renewing) return;
+    const plan = this.sub()?.plan;
+    this.openCheckout('renew', plan?.name || 'Plan actual', plan?.price ?? 0);
+  }
+
   confirmPlanChange(targetPlanCode: string, planName: string): void {
     if (this.changing) return;
-    const current = this.sub()?.plan?.name || 'Plan Básico';
     const price = this.saas.plans().find(p => p.code === targetPlanCode)?.price ?? 0;
-    const ok = confirm(`¿Cambiar tu suscripción a ${planName}?\n\nSe cobrarán USD ${price.toFixed(2)} con PayPal por un ciclo nuevo de 30 días. ` +
-      `Tu plan actual (${current}) se reemplaza solo cuando PayPal confirme el pago.`);
-    if (!ok) return;
-
-    this.changing = true;
-    this.saas.changeMyPlan(targetPlanCode).subscribe({
-      next: (res) => {
-        this.changing = false;
-        this.reportCheckout(res);
-      },
-      error: (err) => {
-        this.changing = false;
-        const detail = err.error?.detail || 'No se pudo actualizar el plan';
-        this.toast.error(detail);
-      }
-    });
+    this.openCheckout('change_plan', planName, price, targetPlanCode);
   }
 }
